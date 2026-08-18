@@ -1,5 +1,6 @@
 from pathlib import Path
 import fitz
+from src.models import DocumentPage
 class PDFDocumentLoader:
     def __init__(self, file_path: str):
         self.file_path = Path(file_path)

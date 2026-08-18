@@ -8,5 +8,8 @@ class DocumentPage:
 class DocumentChunk:
     text: str
     source: str
-    page_number: int
+    page_number: int | None
     chunk_id: int
+    document_id: int
+    section: str | None
+    parent_id: str | None
