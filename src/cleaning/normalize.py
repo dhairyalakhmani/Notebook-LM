@@ -10,6 +10,7 @@ REPLACEMENTS = {
     "\u201c": '"', "\u201d": '"',       
     "\u2013": "-", "\u2014": "-",        
     "\u2022": "-",                       
+}
 
 def normalize_line(text: str) -> str:
     text = unicodedata.normalize("NFKC", text) 
