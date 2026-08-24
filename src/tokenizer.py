@@ -19,8 +19,5 @@ class TiktokenCounter(TokenCounter):
         return len(self.encoder.encode(text))
     def encode(self, text: str) -> list[int]:
         return self.encoder.encode(text)
-    def decode(self, token: list[int]) -> str:
+    def decode(self, tokens: list[int]) -> str:
         return self.encoder.decode(tokens)
-
-counter = TiktokenCounter()
-print(counter.count("It is recommended to install tiktoken within an activated virtual environment to prevent dependency conflicts:"))

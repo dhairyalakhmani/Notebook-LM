@@ -1,7 +1,11 @@
-from dataclasses import dataclass
-@dataclass(frozen = True)
-class ChunkingConfig:
-    parent_target_tokens: int = 2000
-    child_target_tokens: int = 500
-    child_overlap_tokens: int = 50
-    
+EMBEDDING_MODEL   = "BAAI/bge-small-en-v1.5"                    
+GROQ_MODEL        = "openai/gpt-oss-120b"                       
+RERANK_MODEL      = "cross-encoder/ms-marco-MiniLM-L-6-v2"      
+CHILD_MAX_TOKENS     = 350 
+PARENT_MAX_TOKENS    = 1200     
+CHILD_OVERLAP_TOKENS = 60       
+CANDIDATES_K = 30
+RERANK_KEEP  = 8
+CONTEXT_K    = 5    
+USE_RERANKER = False
+STORAGE_DIR = "storage"
