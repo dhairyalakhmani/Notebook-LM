@@ -5,32 +5,11 @@ from pathlib import Path
 from src.cleaning import clean_pages
 from src.loaders import load_document
 from src.models import Document, document_id_for_file
+from src.notebook.ingest import ingest_file
 from src.notebook.store import NotebookStore
 
 def cmd_add(args: argparse.Namespace) -> int:
-    path = Path(args.path)
-    if not path.exists():
-        print(f"no such file: {path}")
-        return 1
-    store = NotebookStore()
-    document_id = document_id_for_file(path)
-    if store.has_document(args.notebook, document_id):
-        print(f"already added: {path.name} (id {document_id}) - nothing to do")
-        return 0
-    print(f"loading {path.name} ...")
-    pages = clean_pages(load_document(str(path)))
-    document = Document(
-        document_id = document_id,
-        title = path.stem,
-        filename = path.name,
-        source_type = path.suffix.lstrip(".").lower(),
-        page_count = len(pages),
-        added_at = datetime.now(timezone.utc).isoformat(timespec = "seconds"),
-    )
-    store.add_document(args.notebook, document)
-    print(f"added {document.filename} -> {args.notebook} "
-          f"({document.page_count} page(s), id {document.document_id})")
-
+    ingest_file(args.notebook, args.path)
     return 0
 
 def cmd_sources(args: argparse.Namespace) -> int:

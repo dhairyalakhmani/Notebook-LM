@@ -1,0 +1,24 @@
+{
+  "name": "notebooklm",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "A NotebookLM-style RAG pipeline: ingest sources, hybrid search, cited answers.",
+  "scripts": {
+    "notebook": "node --disable-warning=ExperimentalWarning main.ts",
+    "scratch": "node --disable-warning=ExperimentalWarning scratch.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "^4.2.0",
+    "commander": "^15.0.0",
+    "dotenv": "^17.4.2",
+    "js-tiktoken": "^1.0.21",
+    "openai": "^7.5.0",
+    "pdfjs-dist": "^6.2.108"
+  },
+  "devDependencies": {
+    "@types/node": "^26.3.0",
+    "typescript": "^7.0.2"
+  }
+}

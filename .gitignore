@@ -1,8 +1,12 @@
 .env
-__pycache__/
-*.pyc
+node_modules/
 STEPS.md
-.venv/
 storage/*
 !storage/.gitkeep
-scratch.py
+eval/results/
+scratch.ts
+
+# the archived Python version
+.venv/
+__pycache__/
+*.pyc
