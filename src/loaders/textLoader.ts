@@ -13,19 +13,27 @@ export class TextDocumentLoader extends DocumentLoader {
     const raw = await readFile(filePath, "utf8");
 
     const lines: TextLine[] = [];
+    // A blank line is the paragraph break in a text file - the one structural
+    // signal the format has. Record it rather than dropping it.
+    let blankBefore = false;
     for (const line of raw.split(/\r?\n/)) {
       const stripped = line.trim();
-      if (!stripped) continue;
-      const heading = MARKDOWN_HEADING.exec(stripped);
-      if (heading) {
-        lines.push({
-          text: heading[2]!,
-          pageNumber: 1,
-          headingLevel: heading[1]!.length,
-        });
-      } else {
-        lines.push({ text: stripped, pageNumber: 1 });
+      if (!stripped) {
+        blankBefore = true;
+        continue;
       }
+      const heading = MARKDOWN_HEADING.exec(stripped);
+      lines.push(
+        heading
+          ? {
+              text: heading[2]!,
+              pageNumber: 1,
+              headingLevel: heading[1]!.length,
+              breakBefore: true,
+            }
+          : { text: stripped, pageNumber: 1, breakBefore: blankBefore },
+      );
+      blankBefore = false;
     }
 
     // A text file has no pages, so it is one page.

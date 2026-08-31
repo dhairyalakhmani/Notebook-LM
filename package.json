@@ -7,13 +7,16 @@
   "scripts": {
     "notebook": "node --disable-warning=ExperimentalWarning main.ts",
     "scratch": "node --disable-warning=ExperimentalWarning scratch.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --disable-warning=ExperimentalWarning --test \"test/**/*.test.ts\""
   },
   "dependencies": {
     "@huggingface/transformers": "^4.2.0",
+    "cheerio": "^1.2.0",
     "commander": "^15.0.0",
     "dotenv": "^17.4.2",
     "js-tiktoken": "^1.0.21",
+    "mammoth": "^1.12.2",
     "openai": "^7.5.0",
     "pdfjs-dist": "^6.2.108"
   },
