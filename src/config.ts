@@ -172,4 +172,38 @@ export const RERANK_KEEP = 8;
 export const CONTEXT_K = 5;
 export const USE_RERANKER = false;
 
+/**
+ * Refuse before calling the LLM when the best passage's cosine is below this.
+ *
+ * Retrieval always returns its best k passages, however weak - "nothing here is
+ * relevant" is not an answer it can give. So a question the sources cannot answer
+ * still arrives at the prompt with five confident-looking passages attached, and
+ * the only thing standing between that and an invented answer is the model
+ * choosing to obey the refusal instruction.
+ *
+ * A cosine floor was the intended second defence. **Measured on the 9-question
+ * eval set, it does not work, and 0 - off - is the answer rather than a
+ * placeholder.** The two ranges overlap:
+ *
+ *     answerable questions    best cosine 0.568 - 0.804
+ *     unanswerable questions  best cosine 0.607 - 0.700
+ *
+ * The worst case is the sharpest question in the set: "what is the meaning of
+ * the term industry in the fleet transfer table" scores 0.700, higher than three
+ * questions the documents genuinely answer. That is not noise, it is what cosine
+ * measures - the fleet transfer table is real and the question is mostly about
+ * it, so retrieval is correctly confident. Only the one invented word makes it
+ * unanswerable, and topical proximity cannot see that.
+ *
+ * The lesson generalises: **similarity measures whether a passage is about the
+ * subject, never whether it contains the answer.** Any floor high enough to
+ * catch that question falsely refuses real ones, and a false refusal on an
+ * answerable question is this system's most damaging failure.
+ *
+ * Honesty is therefore the prompt's job alone, and it does it - the refusal
+ * instruction scored 2/2 on the unanswerable questions with 0 false refusals.
+ * Raise this above 0 only if a much larger question set shows a real gap.
+ */
+export const MIN_RELEVANCE_COSINE = 0;
+
 export const STORAGE_DIR = "storage";

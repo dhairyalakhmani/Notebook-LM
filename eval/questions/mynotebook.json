@@ -1,0 +1,130 @@
+[
+  {
+    "question": "What is the reason for including current mileage and status in the vehicles table?",
+    "expected_source": "Schema Architecture Notes.pdf",
+    "expected_pages": [
+      2
+    ],
+    "expected_answer_contains": [
+      [
+        "state machine",
+        "operational state",
+        "double"
+      ],
+      [
+        "double-booking",
+        "doublebooking",
+        "double booking",
+        "double"
+      ]
+    ],
+    "note": "Direct lookup. The benefit is stated verbatim in the FLEET & INVENTORY domain."
+  },
+  {
+    "question": "Why does rental agreement table is not a part of rental vehicle assignment?",
+    "expected_source": "Schema Architecture Notes.pdf",
+    "expected_pages": [
+      3
+    ],
+    "expected_answer_contains": [
+      [
+        "multiple",
+        "more than one",
+        "several"
+      ],
+      [
+        "breakdown",
+        "breaks down",
+        "break down",
+        "broken down",
+        "swap"
+      ]
+    ],
+    "note": "Design-rationale question. Answer is the 'physical bridging table' benefit."
+  },
+  {
+    "question": "Explain the query to find all the cars not in the list of currently booked cars.",
+    "expected_source": "Schema Architecture Notes.pdf",
+    "expected_pages": [
+      5,
+      6,
+      7
+    ],
+    "expected_answer_contains": [
+      [
+        "not in"
+      ],
+      [
+        "available"
+      ]
+    ],
+    "note": "Retrieval target is the 688-token Frequent Queries parent."
+  },
+  {
+    "question": "What is the significance of the fleet transfer table in the schema?",
+    "expected_source": "Schema Architecture Notes.pdf",
+    "expected_pages": [
+      2
+    ],
+    "expected_answer_contains": [
+      [
+        "branch"
+      ],
+      [
+        "inventory",
+        "transit",
+        "vanish"
+      ]
+    ],
+    "note": "Hard for BM25: the table is never named in the text, only its columns (transfer_id, from_branch_id). 'fleet' appears in four unrelated places."
+  },
+  {
+    "question": "Explain the overall architecture of the schema.",
+    "expected_source": "Schema Architecture Notes.pdf",
+    "expected_pages": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "expected_answer_contains": [],
+    "note": "Diffuse: no single chunk answers it, the answer spans all seven domains. Scored on not refusing and on citing more than one passage."
+  },
+  {
+    "question": "Describe the role of titles table in the schema.",
+    "unanswerable": true,
+    "note": "There is no Titles table in the corpus. A plausible-sounding table from a different kind of schema entirely."
+  },
+  {
+    "question": "What is the meaning of the term industry in the fleet transfer table?",
+    "unanswerable": true,
+    "note": "The sharper trap: the fleet transfer table IS real, but 'industry' appears nowhere in the corpus. Retrieval will confidently return the right table."
+  },
+  {
+    "question": "Where are first name and last name required?",
+    "expected_source": "Schema Architecture Notes.pdf",
+    "expected_pages": [
+      1
+    ],
+    "expected_answer_contains": [
+      [
+        "customer"
+      ]
+    ],
+    "note": "Partially answerable: the document lists first_name/last_name as Core contact data but never says NOT NULL, so 'required' over-asks."
+  },
+  {
+    "question": "What is the passenger capacity?",
+    "expected_source": "Schema Architecture Notes.pdf",
+    "expected_pages": [
+      1,
+      2
+    ],
+    "expected_answer_contains": [
+      [
+        "category"
+      ]
+    ],
+    "note": "Under-specified: passenger_capacity is a COLUMN on Vehicle_Category, and '5 passengers' appears only as an illustration. A grounded answer explains the column; an ungrounded one asserts 5."
+  }
+]

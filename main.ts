@@ -2,6 +2,8 @@ import { Command } from "commander";
 import { ingestFile } from "./src/notebook/ingest.ts";
 import * as config from "./src/config.ts";
 import { getEmbedder } from "./src/embedding/index.ts";
+import { answerQuestion, formatAnswer } from "./src/generation/answer.ts";
+import { buildPrompt } from "./src/generation/prompts.ts";
 import { supportedExtensions } from "./src/loaders/index.ts";
 import { NotebookStore } from "./src/notebook/store.ts";
 import { formatPages, Retriever } from "./src/retrieval/index.ts";
@@ -54,6 +56,44 @@ program
     new VectorStore().deleteDocument(documentId);
     console.log(`removed ${documentId} from ${notebook}`);
   });
+
+program
+  .command("ask")
+  .description("ask a question about a notebook, answered only from its sources")
+  .argument("<notebook>")
+  .argument("<question>")
+  .option("-k, --top <n>", "how many passages to ground the answer in", String(config.CONTEXT_K))
+  .option("--show-prompt", "print the prompt sent to the model, then the answer")
+  .action(
+    async (
+      notebook: string,
+      question: string,
+      options: { top: string; showPrompt?: boolean },
+    ) => {
+      const k = Number.parseInt(options.top, 10);
+      if (!Number.isInteger(k) || k < 1) throw new Error("--top must be a positive integer");
+
+      const started = performance.now();
+      const retriever = await Retriever.create(notebook);
+      const passages = await retriever.retrieve(question, { k });
+
+      if (options.showPrompt) {
+        // The single most useful thing to read while learning what grounding is:
+        // everything the model is allowed to know, and nothing else.
+        console.log("-".repeat(78));
+        console.log(passages.length === 0 ? "(no passages retrieved)" : buildPrompt(question, passages));
+        console.log("-".repeat(78));
+      }
+
+      const answer = await answerQuestion(question, notebook, { passages });
+      console.log(formatAnswer(answer));
+
+      if (answer.origin !== "model") {
+        console.log(`\n(refused without calling the model: ${answer.origin})`);
+      }
+      console.log(`\n${(performance.now() - started).toFixed(0)}ms`);
+    },
+  );
 
 program
   .command("search")

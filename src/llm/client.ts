@@ -11,7 +11,22 @@ export interface GenerateOptions {
   temperature?: number;
 }
 
-export class LLMClient {
+/**
+ * The whole LLM surface this project needs. Any provider that can turn a prompt
+ * into text satisfies it - Groq today, anything else later, a fake in tests.
+ *
+ * Callers depend on this rather than on `LLMClient`, deliberately. `LLMClient`'s
+ * constructor throws without GROQ_API_KEY, so a function typed against the class
+ * cannot be tested without either a live key or intercepted HTTP; typed against
+ * the interface, a three-line stub does it.
+ */
+export interface CompletionModel {
+  generate(prompt: string, options?: GenerateOptions): Promise<string>;
+}
+
+/** `implements` is not decoration here: it makes the compiler prove the real
+ *  client still satisfies the interface everything else is typed against. */
+export class LLMClient implements CompletionModel {
   private client: OpenAI;
   readonly model: string;
 

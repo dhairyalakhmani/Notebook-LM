@@ -1,6 +1,7 @@
 import * as config from "../../config.ts";
 import { sanitizeBoundaries } from "./base.ts";
 import type { Segmenter } from "./base.ts";
+import type { CompletionModel } from "../../llm/client.ts";
 import type { Block } from "../../models.ts";
 
 /**
@@ -17,11 +18,9 @@ import type { Block } from "../../models.ts";
  *     provider was down.
  */
 
-/** The whole LLM surface this needs. Any provider that can turn a prompt into
- *  text satisfies it - Groq today, anything else later, a fake in tests. */
-export interface CompletionModel {
-  generate(prompt: string, options?: { jsonMode?: boolean; temperature?: number }): Promise<string>;
-}
+/** Re-exported so the chunking API still names the type its options require.
+ *  It lives in llm/client.ts because generation needs the same interface. */
+export type { CompletionModel } from "../../llm/client.ts";
 
 const PROMPT = `You are segmenting a document for retrieval. Below are numbered blocks of text in reading order.
 
