@@ -7,6 +7,8 @@ import * as config from "../src/config.ts";
 import { EmbeddingCache } from "../src/embedding/cache.ts";
 import { HfApiEmbedder } from "../src/embedding/hfApiEmbedder.ts";
 import { isUnitLength, normalize } from "../src/embedding/shared.ts";
+import { checkBudget, estimateModelTokens, findOversized } from "../src/embedding/limits.ts";
+import { VectorStore } from "../src/search/vectorStore.ts";
 
 const TOKEN = "test-token";
 const DIMS = config.EMBEDDING_DIMENSIONS;
@@ -303,5 +305,98 @@ describe("EmbeddingCache", () => {
     await e.embedDocuments(["known", "unknown"]);
 
     assert.deepEqual(calls.flatMap((c) => c.inputs), ["unknown"]);
+  });
+});
+
+describe("truncation guard", () => {
+  const fake = (maxInputTokens: number) => ({
+    modelId: "fake/model",
+    dimensions: DIMS,
+    maxInputTokens,
+    embedDocuments: async () => [],
+    embedQuery: async () => [],
+  });
+
+  it("accepts the shipped budget", () => {
+    // 350 tiktoken * 1.35 = 473, under bge-small's 512.
+    assert.equal(checkBudget(fake(512)), null);
+  });
+
+  it("rejects a budget the model cannot read, and says what to set", () => {
+    const problem = checkBudget(fake(256));
+    assert.match(problem!, /silently discarded/);
+    assert.match(problem!, /Lower CHILD_MAX_TOKENS to about \d+/);
+  });
+
+  it("converts tiktoken counts to a worst-case model count", () => {
+    assert.equal(estimateModelTokens(100), Math.ceil(100 * config.MODEL_TOKEN_RATIO));
+  });
+
+  it("flags only the chunks actually at risk", () => {
+    const chunk = (chunkId: string, tokenCount: number) =>
+      ({ chunkId, tokenCount }) as Parameters<typeof findOversized>[0][number];
+    const found = findOversized(
+      // 380 * 1.35 = 513, one token over. 379 would land exactly on 512 and pass.
+      [chunk("safe", 100), chunk("risky", 500), chunk("edge", 380)],
+      fake(512),
+    );
+    assert.deepEqual(found.map((c) => c.chunkId), ["risky", "edge"]);
+  });
+
+  it("finds nothing when every chunk fits", () => {
+    const chunk = (chunkId: string, tokenCount: number) =>
+      ({ chunkId, tokenCount }) as Parameters<typeof findOversized>[0][number];
+    assert.deepEqual(findOversized([chunk("a", 50), chunk("b", 200)], fake(512)), []);
+  });
+});
+
+describe("a notebook is never allowed to mix models", () => {
+  const chunk = (chunkId: string) =>
+    ({
+      chunkId, documentId: "d", parentId: "p", text: "t", tokenCount: 1,
+      pageStart: 1, pageEnd: 1, headingPath: [], sectionTitle: null, chunkIndex: 0,
+      previousChunkId: null, nextChunkId: null, blockKinds: ["paragraph"],
+      boundaryReason: "structural",
+    }) as Parameters<VectorStore["add"]>[1][number];
+  const unit = () => Array.from({ length: DIMS }, (_, i) => (i === 0 ? 1 : 0));
+  const store = () => new VectorStore(mkdtempSync(join(tmpdir(), "nblm-vs-")));
+
+  it("records which model produced each vector", () => {
+    const vs = store();
+    vs.add("nb", [chunk("c1")], [unit()], "BAAI/bge-small-en-v1.5");
+    assert.deepEqual(vs.modelsIn("nb"), ["BAAI/bge-small-en-v1.5"]);
+  });
+
+  it("rejects an ingest with a different model, leaving the notebook intact", () => {
+    const vs = store();
+    vs.add("nb", [chunk("c1")], [unit()], "BAAI/bge-small-en-v1.5");
+    assert.throws(
+      () => vs.add("nb", [chunk("c2")], [unit()], "Xenova/bge-small-en-v1.5"),
+      /not comparable/,
+    );
+    assert.equal(vs.count(), 1, "the bad write must not land");
+    assert.deepEqual(vs.modelsIn("nb"), ["BAAI/bge-small-en-v1.5"]);
+  });
+
+  it("allows adding more sources with the same model", () => {
+    const vs = store();
+    vs.add("nb", [chunk("c1")], [unit()], "BAAI/bge-small-en-v1.5");
+    vs.add("nb", [chunk("c2")], [unit()], "BAAI/bge-small-en-v1.5");
+    assert.equal(vs.count(), 2);
+  });
+
+  it("keeps notebooks independent of one another", () => {
+    const vs = store();
+    vs.add("a", [chunk("c1")], [unit()], "BAAI/bge-small-en-v1.5");
+    vs.add("b", [chunk("c2")], [unit()], "some-other/model");
+    assert.deepEqual(vs.modelsIn("a"), ["BAAI/bge-small-en-v1.5"]);
+    assert.deepEqual(vs.modelsIn("b"), ["some-other/model"]);
+  });
+
+  it("refuses to search with a model the notebook was not embedded with", () => {
+    const vs = store();
+    vs.add("nb", [chunk("c1")], [unit()], "BAAI/bge-small-en-v1.5");
+    assert.throws(() => vs.search("nb", unit(), 5, "Xenova/bge-small-en-v1.5"), /not comparable/);
+    assert.equal(vs.search("nb", unit(), 5, "BAAI/bge-small-en-v1.5").length, 1);
   });
 });

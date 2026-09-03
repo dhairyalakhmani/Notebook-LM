@@ -5,6 +5,7 @@ import { LLMSegmenter } from "../chunking/segmentation/llm.ts";
 import { cleanPages } from "../cleaning/index.ts";
 import * as config from "../config.ts";
 import { getEmbedder } from "../embedding/index.ts";
+import { checkBudget, findOversized } from "../embedding/limits.ts";
 import { loadDocument, routeExtraction } from "../loaders/index.ts";
 import { documentIdForFile } from "../models.ts";
 import { NotebookStore } from "./store.ts";
@@ -123,6 +124,22 @@ export async function ingestFile(
   //
   // Only children are embedded: they are what gets searched.
   const embedder = options.embedder ?? (await getEmbedder());
+
+  // A budget too large for the model would truncate every big chunk, silently.
+  // That is a configuration error, so it stops the ingest rather than producing
+  // a store full of vectors missing their endings.
+  const budgetProblem = checkBudget(embedder);
+  if (budgetProblem) throw new Error(budgetProblem);
+
+  const oversized = findOversized(children, embedder);
+  if (oversized.length > 0) {
+    console.log(
+      `  ! ${oversized.length} chunk(s) may exceed ${embedder.modelId}'s ` +
+        `${embedder.maxInputTokens}-token input limit and lose their ending ` +
+        `(largest ~${Math.max(...oversized.map((c) => c.estimated))} tokens)`,
+    );
+  }
+
   console.log(
     `  embedding ${children.length} child chunk(s) with ${embedder.modelId} ...`,
   );

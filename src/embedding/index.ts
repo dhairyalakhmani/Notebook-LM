@@ -8,6 +8,7 @@ export { HfApiEmbedder } from "./hfApiEmbedder.ts";
 export { LocalEmbedder } from "./localEmbedder.ts";
 export { EmbeddingCache } from "./cache.ts";
 export { QUERY_PREFIX, isEmbeddable, isUnitLength, normalize } from "./shared.ts";
+export { checkBudget, findOversized, estimateModelTokens } from "./limits.ts";
 
 let cached: Promise<Embedder> | null = null;
 
@@ -32,6 +33,14 @@ function create(): Promise<Embedder> {
     case "hf-api":
       return Promise.resolve(new HfApiEmbedder());
     case "local":
+      // The hosted API is the intended path. Running locally is legitimate for
+      // offline development, but it produces vectors that are not interchangeable
+      // with the stored ones, so it is never allowed to happen quietly.
+      console.log(
+        `! EMBEDDING_PROVIDER is "local" - embedding with ${config.EMBEDDING_MODEL} ` +
+          "in-process, not the HuggingFace API. Vectors from the two paths are not " +
+          "comparable; set it back to \"hf-api\" before ingesting anything you intend to keep.",
+      );
       return LocalEmbedder.create();
   }
 }

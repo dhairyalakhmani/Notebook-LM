@@ -97,6 +97,19 @@ export class VectorStore {
         `got ${chunks.length} chunks but ${vectors.length} vectors - they must pair up`,
       );
     }
+
+    // Refuse to mix models within a notebook. Caught here rather than at query
+    // time on purpose: allowing the write would leave the notebook permanently
+    // unsearchable, whereas rejecting one ingest leaves it exactly as it was.
+    const existing = this.modelsIn(notebook).filter((id) => id !== modelId);
+    if (existing.length > 0) {
+      throw new Error(
+        `notebook '${notebook}' is embedded with ${existing.map((id) => `'${id}'`).join(", ")}, ` +
+          `but this ingest used '${modelId}'. Vectors from different models are not ` +
+          "comparable. Either embed with the same model, or remove the existing " +
+          "sources and re-add them all.",
+      );
+    }
     const statement = this.db.prepare(
       `INSERT OR REPLACE INTO vectors
          (chunk_id, notebook, document_id, model_id, dimensions, vector)

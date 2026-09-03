@@ -61,6 +61,22 @@ export const LOCAL_EMBED_BATCH = 16;
  *  pay for the same text twice. Matters far more for a metered API. */
 export const CACHE_EMBEDDINGS = true;
 
+/**
+ * How many model tokens one tiktoken token may turn into.
+ *
+ * Chunk budgets are counted in cl100k (tiktoken), because parents are read by
+ * the LLM. The embedding model counts in BERT WordPiece, which is a different
+ * vocabulary and produces *more* tokens for the same text - measured at up to
+ * 1.20x on this project's documents, and considerably worse for CJK, code and
+ * long identifiers.
+ *
+ * That matters because a model silently truncates anything past its input limit
+ * (verified: a 1202-token input returns a vector identical to its first 512
+ * tokens, with no error). This ratio converts a tiktoken budget into a
+ * worst-case model-token estimate so the overflow can be caught instead.
+ */
+export const MODEL_TOKEN_RATIO = 1.35;
+
 // ------------------------------------------------ layer 0: extraction
 /**
  * How far apart two runs may sit vertically and still be one line, as a

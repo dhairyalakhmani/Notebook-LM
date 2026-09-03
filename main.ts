@@ -4,6 +4,7 @@ import * as config from "./src/config.ts";
 import { getEmbedder } from "./src/embedding/index.ts";
 import { supportedExtensions } from "./src/loaders/index.ts";
 import { NotebookStore } from "./src/notebook/store.ts";
+import { formatPages, Retriever } from "./src/retrieval/index.ts";
 import { VectorStore } from "./src/search/vectorStore.ts";
 
 const program = new Command();
@@ -52,6 +53,64 @@ program
     }
     new VectorStore().deleteDocument(documentId);
     console.log(`removed ${documentId} from ${notebook}`);
+  });
+
+program
+  .command("search")
+  .description("show the passages retrieval would hand the answerer, with no LLM involved")
+  .argument("<notebook>")
+  .argument("<question>")
+  .option("-k, --top <n>", "how many passages to return", String(config.CONTEXT_K))
+  .option("--full", "print each passage whole instead of its first 500 characters")
+  .action(async (notebook: string, question: string, options: { top: string; full?: boolean }) => {
+    const k = Number.parseInt(options.top, 10);
+    if (!Number.isInteger(k) || k < 1) throw new Error(`--top must be a positive integer`);
+
+    const started = performance.now();
+    const retriever = await Retriever.create(notebook);
+    const passages = await retriever.retrieve(question, { k });
+    const elapsed = performance.now() - started;
+
+    console.log(`Q: ${question}`);
+    if (passages.length === 0) {
+      // Distinguish the two reasons, because the fixes are entirely different.
+      const sources = retriever.store.listDocuments(notebook).length;
+      console.log(
+        sources === 0
+          ? `\nnotebook '${notebook}' has no sources - add one with \`notebook add\``
+          : "\nnothing matched. Both searches came back empty, which for a non-empty " +
+              "notebook usually means the question shares no words with it and is far " +
+              "from it in meaning too.",
+      );
+      return;
+    }
+
+    for (const [index, passage] of passages.entries()) {
+      const heading = passage.headingPath.join(" > ") || passage.sectionTitle || "(no heading)";
+      console.log(
+        `\n[${index + 1}] ${passage.filename}  ${formatPages(passage.pageStart, passage.pageEnd)}` +
+          `  |  ${heading}`,
+      );
+      // Where it came from matters as much as the score. "found by keyword only"
+      // is the difference between retrieval working and retrieval getting lucky.
+      const found = [
+        passage.match.denseRank !== null
+          ? `meaning #${passage.match.denseRank} (cos ${passage.match.dense?.toFixed(3)})`
+          : null,
+        passage.match.sparseRank !== null
+          ? `keyword #${passage.match.sparseRank} (bm25 ${passage.match.sparse?.toFixed(2)})`
+          : null,
+      ].filter((part) => part !== null);
+      console.log(
+        `    fused ${passage.match.fused.toFixed(5)}  |  found by ${found.join(" + ")}` +
+          `  |  ${passage.matchCount} matching chunk(s)  |  ${passage.blockKinds.join(", ")}`,
+      );
+      console.log(
+        options.full ? passage.text : passage.text.slice(0, 500).trimEnd() +
+          (passage.text.length > 500 ? " ..." : ""),
+      );
+    }
+    console.log(`\n${passages.length} passage(s) in ${elapsed.toFixed(0)}ms`);
   });
 
 program
