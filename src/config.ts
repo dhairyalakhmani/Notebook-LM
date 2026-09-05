@@ -170,6 +170,29 @@ export const GROUP_PARENTS_BY_ANCESTOR = true; // BAKED IN
 export const CANDIDATES_K = 30;
 export const RERANK_KEEP = 8;
 export const CONTEXT_K = 5;
+/**
+ * Off, and now for a measured reason rather than caution.
+ *
+ * A cross-encoder was built (retrieval/reranker.ts) and A/B'd on the 775-page
+ * corpus. It made retrieval WORSE:
+ *
+ *                  off          on
+ *     recall@1     58% 11/19    42%  8/19
+ *     recall@3     79% 15/19    79% 15/19
+ *     recall@5     89% 17/19    84% 16/19
+ *     MRR@5          0.702       0.598
+ *
+ * Identical numbers at RERANK_KEEP 8 and 30, so it is the ordering that is
+ * worse, not the candidate pool being truncated. The likely cause is domain:
+ * ms-marco-MiniLM is trained on short keyword-style web queries, and these
+ * questions are long multi-clause conceptual ones ("Why does TCP need both flow
+ * control and congestion control? Aren't they basically solving the same
+ * problem?"), which is out of its distribution - and a long question plus a
+ * 350-token chunk also strains its 512-token pair limit.
+ *
+ * Turning this on needs a better-matched model, not a config tweak. Re-measure
+ * with `npm run eval -- --notebook networking --retrieval --rerank`.
+ */
 export const USE_RERANKER = false;
 
 /**

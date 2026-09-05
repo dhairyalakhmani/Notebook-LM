@@ -12,6 +12,7 @@
 
 import * as config from "../config.ts";
 import { getEmbedder } from "../embedding/index.ts";
+import { getReranker } from "./reranker.ts";
 import { NotebookStore } from "../notebook/store.ts";
 import { hybridSearch } from "../search/hybrid.ts";
 import { KeywordIndex } from "../search/keywordIndex.ts";
@@ -50,11 +51,9 @@ export interface Passage {
 }
 
 /**
- * Phase 7, if the numbers ever justify it: a cross-encoder that re-scores the
- * candidates by reading the question and each chunk *together*, which an
- * embedding model never gets to do. Nothing implements this yet, and it stays out
- * until Phase 10 can prove it helps - it is a 90MB download and real query-time
- * latency, so it has to earn its place.
+ * A cross-encoder that re-scores the candidates by reading the question and each
+ * chunk *together*, which an embedding model never gets to do. Implemented in
+ * reranker.ts and switched on by `config.USE_RERANKER`.
  *
  * It takes the already-fetched chunks rather than the store, so a reranker needs
  * to know nothing about storage and costs no second database round trip. The
@@ -126,8 +125,7 @@ export class Retriever {
       parts.vectorStore ?? new VectorStore(),
       parts.embedder ?? (await getEmbedder()),
       KeywordIndex.forNotebook(notebook, store),
-      // Phase 7 would make this `config.USE_RERANKER ? await getReranker() : null`.
-      parts.reranker ?? null,
+      parts.reranker ?? (config.USE_RERANKER ? await getReranker() : null),
     );
   }
 

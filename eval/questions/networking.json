@@ -1,0 +1,454 @@
+[
+  {
+    "question": "What exactly happens when I type a website URL into my browser, and why are multiple protocols involved before I actually see the webpage?",
+    "expected_source": "Computer Networking A Top-Down Approach, 8th Edition by James F. Kurose, Keith W. Ross-Pearson-9780136681557.pdf",
+    "expected_pages": [
+      523,
+      524,
+      525,
+      526,
+      527,
+      528,
+      352,
+      353,
+      354,
+      355,
+      356
+    ],
+    "expected_answer_contains": [
+      [
+        "dns"
+      ],
+      [
+        "tcp"
+      ]
+    ],
+    "note": "In-PDF. Section 6.7 'Retrospective: A Day in the Life of a Web Page Request' walks the whole chain. Ground truth widened to p.523-528 after checking the section's true span."
+  },
+  {
+    "question": "Why does the Internet use packet switching instead of simply reserving a dedicated communication path between two devices?",
+    "expected_source": "Computer Networking A Top-Down Approach, 8th Edition by James F. Kurose, Keith W. Ross-Pearson-9780136681557.pdf",
+    "expected_pages": [
+      40,
+      41,
+      42
+    ],
+    "expected_answer_contains": [
+      [
+        "circuit"
+      ],
+      [
+        "packet"
+      ]
+    ],
+    "note": "In-PDF. Section 1.3 The Network Core contrasts packet and circuit switching directly."
+  },
+  {
+    "question": "How are transmission delay, propagation delay, processing delay, and queuing delay different, and why does each one matter for the total delay?",
+    "expected_source": "Computer Networking A Top-Down Approach, 8th Edition by James F. Kurose, Keith W. Ross-Pearson-9780136681557.pdf",
+    "expected_pages": [
+      46,
+      47,
+      48,
+      49,
+      50,
+      51
+    ],
+    "expected_answer_contains": [
+      [
+        "queuing",
+        "queueing"
+      ],
+      [
+        "propagation"
+      ]
+    ],
+    "note": "In-PDF. Section 1.4, the four delay components. Spans three parent chunks, so it tests multi-chunk assembly."
+  },
+  {
+    "question": "Why does the Internet need protocol layering? What problem would we face if all networking functionality were implemented as one huge protocol?",
+    "expected_source": "Computer Networking A Top-Down Approach, 8th Edition by James F. Kurose, Keith W. Ross-Pearson-9780136681557.pdf",
+    "expected_pages": [
+      60,
+      61,
+      62,
+      63,
+      64
+    ],
+    "expected_answer_contains": [
+      [
+        "layer"
+      ],
+      [
+        "modular",
+        "complex",
+        "change",
+        "update",
+        "maintain"
+      ]
+    ],
+    "note": "In-PDF. Section 1.5 Protocol Layers and Their Service Models."
+  },
+  {
+    "question": "How does DNS help a browser reach a web server when the browser initially knows only the website's hostname?",
+    "expected_source": "Computer Networking A Top-Down Approach, 8th Edition by James F. Kurose, Keith W. Ross-Pearson-9780136681557.pdf",
+    "expected_pages": [
+      138,
+      139,
+      140,
+      141,
+      142
+    ],
+    "expected_answer_contains": [
+      [
+        "dns"
+      ],
+      [
+        "ip address"
+      ]
+    ],
+    "note": "In-PDF. Section 2.4, DNS as the Internet's directory service."
+  },
+  {
+    "question": "Why does HTTP need TCP, and what does TCP provide that HTTP itself doesn't?",
+    "expected_source": "Computer Networking A Top-Down Approach, 8th Edition by James F. Kurose, Keith W. Ross-Pearson-9780136681557.pdf",
+    "expected_pages": [
+      109,
+      110,
+      111,
+      112
+    ],
+    "expected_answer_contains": [
+      [
+        "reliab"
+      ],
+      [
+        "tcp"
+      ]
+    ],
+    "note": "In-PDF. Section 2.2 HTTP over TCP, persistent connections."
+  },
+  {
+    "question": "What is the actual difference between TCP and UDP, and why would an application deliberately choose UDP even though it doesn't provide reliable data transfer?",
+    "expected_source": "Computer Networking A Top-Down Approach, 8th Edition by James F. Kurose, Keith W. Ross-Pearson-9780136681557.pdf",
+    "expected_pages": [
+      198,
+      199,
+      200,
+      201,
+      202,
+      203,
+      204,
+      205,
+      206,
+      207,
+      208,
+      209
+    ],
+    "expected_answer_contains": [
+      [
+        "udp"
+      ],
+      [
+        "reliab"
+      ]
+    ],
+    "note": "In-PDF. Sections 3.1-3.3, connectionless transport."
+  },
+  {
+    "question": "How does TCP provide reliable data transfer when IP itself doesn't guarantee that packets will arrive correctly or in order?",
+    "expected_source": "Computer Networking A Top-Down Approach, 8th Edition by James F. Kurose, Keith W. Ross-Pearson-9780136681557.pdf",
+    "expected_pages": [
+      211,
+      212,
+      213,
+      214,
+      215,
+      216,
+      217,
+      218,
+      219,
+      220,
+      221,
+      222
+    ],
+    "expected_answer_contains": [
+      [
+        "acknowledg"
+      ],
+      [
+        "retransmi"
+      ]
+    ],
+    "note": "In-PDF. Section 3.4, principles of reliable data transfer (the rdt protocols)."
+  },
+  {
+    "question": "Why does TCP need both flow control and congestion control? Aren't they basically solving the same problem?",
+    "expected_source": "Computer Networking A Top-Down Approach, 8th Edition by James F. Kurose, Keith W. Ross-Pearson-9780136681557.pdf",
+    "expected_pages": [
+      273,
+      274,
+      282,
+      283,
+      284,
+      285,
+      286,
+      287,
+      288,
+      289,
+      290,
+      291,
+      292,
+      293,
+      294
+    ],
+    "expected_answer_contains": [
+      [
+        "receiv",
+        "buffer"
+      ],
+      [
+        "congestion"
+      ]
+    ],
+    "note": "In-PDF but SPLIT: flow control is section 3.5.5 (p.273), congestion control is section 3.7 (p.282+). Needs two distant parts of the book in one answer."
+  },
+  {
+    "question": "How does a router decide where to forward an incoming packet, and how is forwarding different from routing?",
+    "expected_source": "Computer Networking A Top-Down Approach, 8th Edition by James F. Kurose, Keith W. Ross-Pearson-9780136681557.pdf",
+    "expected_pages": [
+      315,
+      316,
+      317,
+      318
+    ],
+    "expected_answer_contains": [
+      [
+        "forwarding table"
+      ],
+      [
+        "routing"
+      ]
+    ],
+    "note": "In-PDF. Section 4.1.1 Forwarding and Routing: the data and control planes."
+  },
+  {
+    "question": "Why can't we simply use MAC addresses to route packets across the entire Internet instead of using IP addresses?",
+    "expected_source": "Computer Networking A Top-Down Approach, 8th Edition by James F. Kurose, Keith W. Ross-Pearson-9780136681557.pdf",
+    "expected_pages": [
+      489,
+      490,
+      491,
+      492,
+      493,
+      494
+    ],
+    "expected_answer_contains": [
+      [
+        "mac"
+      ],
+      [
+        "arp",
+        "hierarch",
+        "scal",
+        "flat"
+      ]
+    ],
+    "note": "In-PDF. Section 6.4 link-layer addressing and ARP."
+  },
+  {
+    "question": "How do OSPF and BGP differ, and why does the Internet need different routing mechanisms inside an autonomous system and between autonomous systems?",
+    "expected_source": "Computer Networking A Top-Down Approach, 8th Edition by James F. Kurose, Keith W. Ross-Pearson-9780136681557.pdf",
+    "expected_pages": [
+      408,
+      409,
+      410,
+      411,
+      412,
+      413
+    ],
+    "expected_answer_contains": [
+      [
+        "ospf"
+      ],
+      [
+        "bgp"
+      ]
+    ],
+    "note": "In-PDF. Sections 5.3 (OSPF) and 5.4 (BGP)."
+  },
+  {
+    "question": "What happens at the network and link layers when a device on my home WiFi network sends a request to a server somewhere on the Internet?",
+    "expected_source": "Computer Networking A Top-Down Approach, 8th Edition by James F. Kurose, Keith W. Ross-Pearson-9780136681557.pdf",
+    "expected_pages": [
+      352,
+      353,
+      354,
+      355,
+      356,
+      523,
+      524,
+      525,
+      526,
+      527,
+      528
+    ],
+    "expected_answer_contains": [
+      [
+        "dhcp",
+        "arp"
+      ],
+      [
+        "802.11",
+        "wifi",
+        "wireless"
+      ]
+    ],
+    "note": "In-PDF. Overlaps Q1 but from the link-layer side: DHCP, ARP, 802.11."
+  },
+  {
+    "question": "If a packet is lost somewhere between the sender and receiver, which layer is responsible for dealing with that loss, and how does TCP eventually recover from it?",
+    "expected_source": "Computer Networking A Top-Down Approach, 8th Edition by James F. Kurose, Keith W. Ross-Pearson-9780136681557.pdf",
+    "expected_pages": [
+      250,
+      251,
+      252,
+      253,
+      254,
+      255,
+      256,
+      257
+    ],
+    "expected_answer_contains": [
+      [
+        "transport",
+        "tcp"
+      ],
+      [
+        "retransmi"
+      ]
+    ],
+    "note": "In-PDF / multi-hop. Section 3.5.4, TCP retransmission and timeouts."
+  },
+  {
+    "question": "Why can several users sharing the same cable Internet connection experience lower speeds even though the cable network advertises a particular downstream bandwidth?",
+    "expected_source": "Computer Networking A Top-Down Approach, 8th Edition by James F. Kurose, Keith W. Ross-Pearson-9780136681557.pdf",
+    "expected_pages": [
+      23,
+      24,
+      25,
+      26,
+      27,
+      486,
+      487,
+      488,
+      489
+    ],
+    "expected_answer_contains": [
+      [
+        "shar"
+      ],
+      [
+        "downstream",
+        "bandwidth"
+      ]
+    ],
+    "note": "In-PDF / multi-hop. Access networks (section 1.2, HFC) plus DOCSIS (section 6.3.4) - two chapters apart."
+  },
+  {
+    "question": "How does a mobile device remain connected to the network when it moves from the coverage area of one base station to another?",
+    "expected_source": "Computer Networking A Top-Down Approach, 8th Edition by James F. Kurose, Keith W. Ross-Pearson-9780136681557.pdf",
+    "expected_pages": [
+      583,
+      584,
+      585,
+      598,
+      599,
+      600,
+      601,
+      602
+    ],
+    "expected_answer_contains": [
+      [
+        "handoff",
+        "hand-off",
+        "handover"
+      ],
+      [
+        "base station"
+      ]
+    ],
+    "note": "In-PDF / multi-hop. Section 7.6 mobility management in practice."
+  },
+  {
+    "question": "How are encryption, message integrity, authentication, TLS, and IPsec related to each other, and what different problems does each one solve?",
+    "expected_source": "Computer Networking A Top-Down Approach, 8th Edition by James F. Kurose, Keith W. Ross-Pearson-9780136681557.pdf",
+    "expected_pages": [
+      655,
+      656,
+      657,
+      658,
+      659,
+      660,
+      661,
+      662,
+      663,
+      664
+    ],
+    "expected_answer_contains": [
+      [
+        "tls"
+      ],
+      [
+        "ipsec"
+      ]
+    ],
+    "note": "In-PDF / security. Spans sections 8.3, 8.6 and 8.7 - the broadest in-PDF question in the set."
+  },
+  {
+    "question": "How does HTTP/3 work internally, and why was QUIC chosen instead of TCP for HTTP/3?",
+    "expected_source": "Computer Networking A Top-Down Approach, 8th Edition by James F. Kurose, Keith W. Ross-Pearson-9780136681557.pdf",
+    "expected_pages": [
+      291,
+      292,
+      293,
+      294
+    ],
+    "expected_answer_contains": [
+      [
+        "quic"
+      ],
+      [
+        "udp"
+      ]
+    ],
+    "note": "RECLASSIFIED as answerable. Labelled Out-of-PDF, but the 8th edition covers QUIC substantively (43 mentions in one parent chunk, p.291-293)."
+  },
+  {
+    "question": "How does a modern web browser implement JavaScript execution internally, including the V8 engine, JIT compilation, garbage collection, and the event loop?",
+    "unanswerable": true,
+    "note": "GENUINELY out-of-PDF, and the only one. 'JIT' and 'garbage collection' appear zero times; 'V8' never appears as the JS engine. This is the entire honesty test."
+  },
+  {
+    "question": "How does Google's BBR congestion-control algorithm differ from the TCP congestion-control mechanisms discussed in this book?",
+    "expected_source": "Computer Networking A Top-Down Approach, 8th Edition by James F. Kurose, Keith W. Ross-Pearson-9780136681557.pdf",
+    "expected_pages": [
+      285,
+      286,
+      287,
+      288,
+      289,
+      290
+    ],
+    "expected_answer_contains": [
+      [
+        "bbr"
+      ],
+      [
+        "delay",
+        "bandwidth"
+      ]
+    ],
+    "note": "RECLASSIFIED as answerable. Labelled Out-of-PDF, but the book describes BBR as delay-based, building on TCP Vegas, deployed at Google in place of CUBIC (p.287-288)."
+  }
+]

@@ -43,6 +43,9 @@ export interface Candidate {
   sparse: number | null;
   denseRank: number | null;
   sparseRank: number | null;
+  /** Cross-encoder score, when a reranker ran. Unbounded and often negative -
+   *  meaningful only as an ordering, never as a confidence. */
+  reranked?: number;
 }
 
 /** Adds one ranked list into the merge, crediting each chunk 1 / (k + rank). */

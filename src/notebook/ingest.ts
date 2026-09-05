@@ -57,12 +57,24 @@ export async function ingestFile(
     return null;
   }
 
+  // Stage timings, because "ingest took four minutes" is not actionable and
+  // "extraction took four minutes, embedding took fifty seconds" is.
+  const timings: [string, number][] = [];
+  const clock = async <T,>(stage: string, work: () => Promise<T> | T): Promise<T> => {
+    const started = performance.now();
+    const value = await work();
+    timings.push([stage, performance.now() - started]);
+    return value;
+  };
+
   console.log(`loading ${name} ...`);
-  const loaded = await loadDocument(filePath);
+  const loaded = await clock("extract", () => loadDocument(filePath));
 
   // Extraction quality is judged before chunking, so a scanned document is
   // reported as an extraction problem rather than silently ingested as empty.
-  const routed = await routeExtraction(filePath, loaded, options.ocrEngine);
+  const routed = await clock("quality check", () =>
+    routeExtraction(filePath, loaded, options.ocrEngine),
+  );
   if (routed.recognised.length > 0) {
     console.log(`  recognised ${routed.recognised.length} page(s) with OCR`);
   }
@@ -78,7 +90,7 @@ export async function ingestFile(
     console.log("  ! warning: extracted text does not look like language");
   }
 
-  const pages = cleanPages(routed.pages);
+  const pages = await clock("clean", () => cleanPages(routed.pages));
   console.log(`  ${pages.length} page(s) after cleaning`);
 
   // The LLM segmenter is advisory and off by default, so ingest stays offline
@@ -94,9 +106,9 @@ export async function ingestFile(
         ]
       : []);
 
-  const { parents, children, report } = await chunkDocument(pages, documentId, {
-    segmenters,
-  });
+  const { parents, children, report } = await clock("chunk", () =>
+    chunkDocument(pages, documentId, { segmenters }),
+  );
   console.log(
     `  ${report.blockCount} block(s), structure score ${report.structureScore.toFixed(2)}` +
       ` [${report.segmenters.join(" + ")}]`,
@@ -144,7 +156,9 @@ export async function ingestFile(
     `  embedding ${children.length} child chunk(s) with ${embedder.modelId} ...`,
   );
   const started = performance.now();
-  const vectors = await embedder.embedDocuments(children.map((child) => child.text));
+  const vectors = await clock("embed", () =>
+    embedder.embedDocuments(children.map((child) => child.text)),
+  );
   const elapsed = performance.now() - started;
   console.log(
     `  embedded in ${(elapsed / 1000).toFixed(1)}s ` +
@@ -177,6 +191,7 @@ export async function ingestFile(
   // covers both. If the later writes fail, undo the earlier ones by hand rather
   // than leaving half a document behind.
   const vectorStore = options.vectorStore ?? new VectorStore();
+  const storeStarted = performance.now();
   store.addDocument(notebook, document);
   try {
     store.addChunks([...parents, ...children]);
@@ -187,6 +202,15 @@ export async function ingestFile(
     throw error;
   }
 
+  timings.push(["store", performance.now() - storeStarted]);
+  const totalMs = timings.reduce((sum, [, ms]) => sum + ms, 0);
   console.log(`added ${document.filename} -> ${notebook} (id ${documentId})`);
+  console.log(`  ingest took ${(totalMs / 1000).toFixed(1)}s:`);
+  for (const [stage, ms] of timings) {
+    console.log(
+      `    ${stage.padEnd(14)} ${(ms / 1000).toFixed(1).padStart(6)}s  ` +
+        `${((100 * ms) / totalMs).toFixed(0).padStart(3)}%`,
+    );
+  }
   return document;
 }

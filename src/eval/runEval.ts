@@ -17,10 +17,11 @@ import { join } from "node:path";
 import { parseArgs } from "node:util";
 import * as config from "../config.ts";
 import { answerQuestion, refused, ungrounded } from "../generation/answer.ts";
+import { getReranker } from "../retrieval/reranker.ts";
 import { Retriever } from "../retrieval/retriever.ts";
 import { loadQuestions } from "./questions.ts";
 import type { Answer } from "../generation/answer.ts";
-import type { Passage } from "../retrieval/retriever.ts";
+import type { Passage, Reranker as RerankerInterface } from "../retrieval/retriever.ts";
 import type { EvalQuestion } from "./questions.ts";
 
 const RESULTS_DIR = "eval/results";
@@ -64,12 +65,24 @@ function bar(numerator: number, denominator: number, width = 20): string {
   return "#".repeat(filled) + ".".repeat(width - filled);
 }
 
+/** The real reranker, with `topN` pinned - so how many candidates survive the
+ *  rerank is a command-line variable rather than a config edit between runs. */
+async function cappedReranker(topN: number): Promise<RerankerInterface> {
+  const reranker = await getReranker();
+  return {
+    rerank: (question, candidates, chunks) =>
+      reranker.rerank(question, candidates, chunks, topN),
+  };
+}
+
 async function run(): Promise<void> {
   const { values } = parseArgs({
     options: {
       notebook: { type: "string", default: "mynotebook" },
       k: { type: "string", default: String(config.CONTEXT_K) },
       retrieval: { type: "boolean", default: false },
+      rerank: { type: "boolean", default: config.USE_RERANKER },
+      "rerank-keep": { type: "string", default: String(config.RERANK_KEEP) },
     },
     allowPositionals: false,
   });
@@ -78,21 +91,25 @@ async function run(): Promise<void> {
   const k = Number.parseInt(values.k, 10);
   if (!Number.isInteger(k) || k < 1) throw new Error("--k must be a positive integer");
 
-  const questions = await loadQuestions();
+  const questions = await loadQuestions(notebook);
   const answerable = questions.filter((question) => !question.unanswerable);
   const unanswerable = questions.filter((question) => question.unanswerable);
 
   console.log(
     `${questions.length} question(s): ${answerable.length} answerable, ` +
       `${unanswerable.length} unanswerable  |  notebook '${notebook}'  |  k=${k}` +
-      `  |  reranker ${config.USE_RERANKER ? "on" : "off"}` +
+      `  |  reranker ${values.rerank ? `on (${config.RERANK_MODEL}, keep ${values["rerank-keep"]})` : "off"}` +
       `  |  relevance floor ${config.MIN_RELEVANCE_COSINE || "off"}`,
   );
   console.log(values.retrieval ? "retrieval only - no model calls\n" : `model ${config.GROQ_MODEL}\n`);
 
   // One retriever for the whole run: the embedder loads once, and the keyword
   // index is built once, so the timings below are query cost and not setup.
-  const retriever = await Retriever.create(notebook);
+  const retriever = await Retriever.create(notebook, {
+    // Overridable from the command line so the two arms of an A/B are one flag
+    // apart, rather than an edit to config between runs.
+    reranker: values.rerank ? await cappedReranker(Number(values["rerank-keep"])) : null,
+  });
   const results: Result[] = [];
   const started = performance.now();
 
@@ -126,7 +143,10 @@ async function run(): Promise<void> {
   // the difference between a demo and something you can trust.
   const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
   await mkdir(RESULTS_DIR, { recursive: true });
-  const path = join(RESULTS_DIR, `${stamp}-k${k}${values.retrieval ? "-retrieval" : ""}.json`);
+  const path = join(
+    RESULTS_DIR,
+    `${stamp}-k${k}${values.rerank ? "-rerank" : ""}${values.retrieval ? "-retrieval" : ""}.json`,
+  );
   await writeFile(
     path,
     `${JSON.stringify(
@@ -138,7 +158,7 @@ async function run(): Promise<void> {
           embeddingModel: config.HF_EMBEDDING_MODEL,
           groqModel: values.retrieval ? null : config.GROQ_MODEL,
           candidatesK: config.CANDIDATES_K,
-          useReranker: config.USE_RERANKER,
+          useReranker: values.rerank,
           minRelevanceCosine: config.MIN_RELEVANCE_COSINE,
         },
         results: results.map((result) => ({

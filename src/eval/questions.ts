@@ -48,11 +48,22 @@ interface RawQuestion {
   note?: string;
 }
 
-/** Reads every .json file in the directory; each holds a list of entries. */
+/**
+ * Loads a notebook's questions.
+ *
+ * `<notebook>.json` wins when it exists, and only then; otherwise every .json in
+ * the directory is merged. The scoping is not cosmetic - a question set is
+ * ground truth *about one corpus*, so merging two notebooks' files would mark
+ * every question unanswerable against the other's documents and quietly report
+ * a catastrophic score.
+ */
 export async function loadQuestions(
+  notebook?: string,
   directory: string = QUESTIONS_DIR,
 ): Promise<EvalQuestion[]> {
-  const files = (await readdir(directory)).filter((name) => name.endsWith(".json")).sort();
+  const available = (await readdir(directory)).filter((name) => name.endsWith(".json")).sort();
+  const scoped = notebook === undefined ? null : `${notebook}.json`;
+  const files = scoped !== null && available.includes(scoped) ? [scoped] : available;
   const questions: EvalQuestion[] = [];
 
   for (const file of files) {

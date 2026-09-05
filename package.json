@@ -9,7 +9,8 @@
     "scratch": "node --disable-warning=ExperimentalWarning scratch.ts",
     "typecheck": "tsc --noEmit",
     "test": "node --disable-warning=ExperimentalWarning --test \"test/**/*.test.ts\"",
-    "eval": "node --disable-warning=ExperimentalWarning src/eval/runEval.ts"
+    "eval": "node --disable-warning=ExperimentalWarning src/eval/runEval.ts",
+    "latency": "node --disable-warning=ExperimentalWarning src/eval/latency.ts"
   },
   "dependencies": {
     "@huggingface/transformers": "^4.2.0",
