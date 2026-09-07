@@ -198,7 +198,7 @@ export async function ingestFile(
     vectorStore.add(notebook, children, vectors, embedder.modelId);
   } catch (error) {
     store.deleteDocument(notebook, documentId);
-    vectorStore.deleteDocument(documentId);
+    vectorStore.deleteDocument(documentId, notebook);
     throw error;
   }
 

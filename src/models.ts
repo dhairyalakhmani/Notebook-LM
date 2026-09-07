@@ -12,6 +12,43 @@ export async function documentIdForFile(path: string): Promise<string> {
   return digest.digest("hex").slice(0, ID_LENGTH);
 }
 
+/**
+ * A citation on a stored answer, denormalised on purpose.
+ *
+ * It holds the filename, pages and heading rather than a chunk id. Chunks are
+ * derived data and get rebuilt with new ids whenever a source is re-ingested or
+ * the chunk schema changes - a stored citation pointing at a chunk id would go
+ * dead. What a reader needs is where it came from, and that never changes.
+ */
+export interface Citation {
+  /** The [n] the answer used. */
+  marker: number;
+  filename: string;
+  pageStart: number | null;
+  pageEnd: number | null;
+  headingPath: string[];
+}
+
+/**
+ * One turn of a notebook's conversation.
+ *
+ * These are the only rows in storage that are NOT derived data: chunks and
+ * vectors can always be rebuilt from the source file, and a conversation cannot
+ * be rebuilt from anything. No migration may drop this table.
+ */
+export interface ChatMessage {
+  messageId: number;
+  notebook: string;
+  role: "user" | "assistant";
+  text: string;
+  createdAt: string;
+  /** Empty for user turns, and for an assistant turn that cited nothing. */
+  citations: Citation[];
+  /** For a user turn that was a follow-up: what it was rewritten to, so the
+   *  thread shows why retrieval looked for something the user did not type. */
+  resolvedQuestion: string | null;
+}
+
 /** One source inside a notebook. */
 export interface Document {
   documentId: string;

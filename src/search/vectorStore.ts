@@ -9,16 +9,21 @@ const DB_FILENAME = "vectors.db";
 
 /** Bumped when the row shape changes. Vectors are derived data - they are
  *  rebuilt by re-ingesting, never migrated. */
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS vectors (
-    chunk_id    TEXT PRIMARY KEY,
+    chunk_id    TEXT NOT NULL,
     notebook    TEXT NOT NULL,
     document_id TEXT NOT NULL,
     model_id    TEXT NOT NULL,
     dimensions  INTEGER NOT NULL,
-    vector      BLOB NOT NULL
+    vector      BLOB NOT NULL,
+    -- Composite for the same reason as documents: chunk ids are derived from the
+    -- file's content hash, so two notebooks holding one PDF share them. With
+    -- chunk_id alone as the key, adding the file to a second notebook moved
+    -- every vector out of the first.
+    PRIMARY KEY (notebook, chunk_id)
 );
 CREATE INDEX IF NOT EXISTS idx_vectors_notebook ON vectors(notebook);
 CREATE INDEX IF NOT EXISTS idx_vectors_document ON vectors(document_id);
@@ -72,7 +77,10 @@ export class VectorStore {
     const columns = (
       this.db.prepare("PRAGMA table_info(vectors)").all() as { name: string }[]
     ).map((column) => column.name);
-    const current = columns.length > 0 && columns.includes("model_id");
+    const keyed = (
+      this.db.prepare("PRAGMA index_list(vectors)").all() as { origin: string }[]
+    ).some((index) => index.origin === "pk");
+    const current = columns.length > 0 && columns.includes("model_id") && keyed;
     if (version === SCHEMA_VERSION && (current || columns.length === 0)) return;
 
     if (columns.length > 0) {
@@ -202,8 +210,19 @@ export class VectorStore {
     return scored.slice(0, k);
   }
 
-  deleteDocument(documentId: string): void {
-    this.db.prepare("DELETE FROM vectors WHERE document_id = ?").run(documentId);
+  /**
+   * Drops a document's vectors. Scoped to one notebook unless `notebook` is
+   * omitted, which is the deliberate "remove it everywhere" case - passing the
+   * notebook is what stops a removal in one notebook emptying another.
+   */
+  deleteDocument(documentId: string, notebook?: string): void {
+    if (notebook === undefined) {
+      this.db.prepare("DELETE FROM vectors WHERE document_id = ?").run(documentId);
+    } else {
+      this.db
+        .prepare("DELETE FROM vectors WHERE document_id = ? AND notebook = ?")
+        .run(documentId, notebook);
+    }
     this.cache.clear();
   }
 

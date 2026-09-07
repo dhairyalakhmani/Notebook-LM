@@ -33,6 +33,8 @@ interface Result {
    *  null when none of them do. */
   hitRank: number | null;
   answer: Answer | null;
+  /** Wall time of the LLM call alone, in ms. Null when generation was skipped. */
+  generateMs: number | null;
   /** Which of `expectedAnswerContains` the answer actually contained. */
   found: string[];
   missing: string[];
@@ -75,6 +77,41 @@ async function cappedReranker(topN: number): Promise<RerankerInterface> {
   };
 }
 
+/**
+ * Groq's free tier allows 8000 tokens per MINUTE, and one grounded question is
+ * ~6600 of them - so a batch of questions is rate-limited by construction, at
+ * roughly one per minute.
+ *
+ * The wait belongs here and not in LLMClient: for an interactive question a
+ * quota error must surface immediately, because a user staring at a spinner is
+ * not helped by a silent 60-second sleep. A batch eval is the opposite - waiting
+ * is exactly right, and the alternative is a run that cannot finish.
+ */
+async function answerPatiently(
+  question: string,
+  notebook: string,
+  passages: Passage[],
+): Promise<{ answer: Answer; ms: number }> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      // Timed inside the try, so the reported latency is the model call alone.
+      // Including the rate-limit sleep would measure the free tier's quota
+      // policy and label it "LLM time", which is worse than not measuring.
+      const started = performance.now();
+      const answer = await answerQuestion(question, notebook, { passages });
+      return { answer, ms: performance.now() - started };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const match = /try again in ([\d.]+)s/.exec(message);
+      if (!match || attempt > 4) throw error;
+      const waitMs = Math.ceil(Number(match[1]) * 1000) + 1500;
+      process.stdout.write(`  rate limited, waiting ${(waitMs / 1000).toFixed(0)}s ...
+`);
+      await new Promise((resolve) => setTimeout(resolve, waitMs));
+    }
+  }
+}
+
 async function run(): Promise<void> {
   const { values } = parseArgs({
     options: {
@@ -83,6 +120,7 @@ async function run(): Promise<void> {
       retrieval: { type: "boolean", default: false },
       rerank: { type: "boolean", default: config.USE_RERANKER },
       "rerank-keep": { type: "string", default: String(config.RERANK_KEEP) },
+      limit: { type: "string" },
     },
     allowPositionals: false,
   });
@@ -91,7 +129,11 @@ async function run(): Promise<void> {
   const k = Number.parseInt(values.k, 10);
   if (!Number.isInteger(k) || k < 1) throw new Error("--k must be a positive integer");
 
-  const questions = await loadQuestions(notebook);
+  const all = await loadQuestions(notebook);
+  // Token budget is finite, so an A/B on a subset beats no A/B at all. Both arms
+  // must use the same prefix for the comparison to mean anything.
+  const questions =
+    values.limit === undefined ? all : all.slice(0, Number.parseInt(values.limit, 10));
   const answerable = questions.filter((question) => !question.unanswerable);
   const unanswerable = questions.filter((question) => question.unanswerable);
 
@@ -118,8 +160,11 @@ async function run(): Promise<void> {
     const hitRank = firstHitRank(passages, question);
 
     let answer: Answer | null = null;
+    let generateMs: number | null = null;
     if (!values.retrieval) {
-      answer = await answerQuestion(question.question, notebook, { passages });
+      const outcome = await answerPatiently(question.question, notebook, passages);
+      answer = outcome.answer;
+      generateMs = outcome.ms;
     }
 
     // A fact counts as present when the answer contains ANY of its accepted
@@ -132,7 +177,7 @@ async function run(): Promise<void> {
       .filter((wordings) => !present(wordings))
       .map((w) => w[0]!);
 
-    results.push({ question, passages, hitRank, answer, found, missing });
+    results.push({ question, passages, hitRank, answer, generateMs, found, missing });
     process.stdout.write(`  ${index + 1}/${questions.length}\r`);
   }
   const elapsed = performance.now() - started;
@@ -322,6 +367,19 @@ function report(results: Result[], k: number, elapsed: number, retrievalOnly: bo
     lines.push(
       `  mean passages cited        ${mean(cited).toFixed(1).padStart(4)}  of ${k} supplied`,
     );
+
+    // The reason the length budget exists: output tokens are what a user waits on.
+    const gen = results
+      .map((result) => result.generateMs)
+      .filter((ms): ms is number => ms !== null)
+      .sort((a, b) => a - b);
+    if (gen.length > 0) {
+      lines.push(
+        `  LLM time per question      ${(mean(gen) / 1000).toFixed(1).padStart(4)}s mean, ` +
+          `${(gen[Math.floor(gen.length / 2)]! / 1000).toFixed(1)}s median, ` +
+          `${(gen[0]! / 1000).toFixed(1)}-${(gen.at(-1)! / 1000).toFixed(1)}s range`,
+      );
+    }
   }
 
   lines.push("");

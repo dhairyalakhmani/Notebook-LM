@@ -22,26 +22,37 @@ import type { Passage } from "../retrieval/retriever.ts";
 export const REFUSAL = "The sources provided don't cover this.";
 
 /**
- * Note the shape as well as the words. The restrictions come first and last, and
- * the depth instructions sit in the middle, because a model attends most to the
+ * Note the shape as well as the words. The honesty rules come first and last,
+ * and the length rules sit in the middle, because a model attends most to the
  * start and end of its instructions - the guards get both ends.
  *
- * "As fully as the passages allow, and no further" is the entire idea. Depth is
- * tied to the source rather than to a length, so it cannot be read as licence to
- * pad: an instruction like "give a detailed answer" would be a target the model
- * could hit by inventing, and this one can only be hit by using more of the
- * document. The third bullet exists to protect the *honest short answer* - the
- * corpus gives `passenger_capacity` three words, and 24 words back is correct
- * rather than lazy.
+ * **Why there is a length budget at all.** Output tokens are ~99% of the time a
+ * user waits, so answer length is a latency decision, not only a style one. An
+ * earlier version asked for depth instead and measured 276 words mean, up to
+ * 567 - roughly double the generation time. This asks for the middle.
+ *
+ * Three details are doing the work:
+ *
+ *  1. **A soft target plus a hard ceiling**, not one number. Given a single
+ *     figure, a model pads to reach it or truncates to obey it.
+ *  2. **"Cover every part of a multi-part question."** This is the guard against
+ *     the budget eating facts, which is the specific risk of capping length -
+ *     several of these questions have three or four parts, and a cap without
+ *     this line trades correctness for brevity. The eval measures exactly that.
+ *  3. **"No section headings, no summary or closing paragraph."** That is where
+ *     the bulk actually went: the longest answer was bolded per-topic sections
+ *     plus a concluding paragraph restating them.
  */
 export const INSTRUCTIONS = `Answer the question using ONLY the passages below.
 
-Answer as fully as the passages allow, and no further:
-- Give the reasoning the passages state, not only the conclusion. Where a passage
-  says why a design choice was made, include that explanation.
-- Use every passage that bears on the question, not only the closest one.
-- If the passages support only a short answer, give a short answer. Never pad, and
-  never generalise beyond what is written.
+Be brief. Aim for about 120 words, and never exceed 200.
+- Open with the direct answer in the first sentence. Do not restate the question.
+- Then add only the reasoning the passages themselves give, and only where it
+  changes the answer.
+- Cover every part of a multi-part question, briefly. Dropping a part is not
+  concision, it is a wrong answer.
+- Write prose. No section headings, no summary or closing paragraph, no repetition.
+- If the passages support only one sentence, give one sentence.
 
 Every sentence that states a fact must end with its source marker, like [2].
 If a fact comes from more than one passage, cite them all, like [1][3].

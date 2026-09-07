@@ -296,3 +296,57 @@ describe("formatPages", () => {
     assert.equal(formatPages(null, null), "p. ?");
   });
 });
+
+describe("a document shared by two notebooks", () => {
+  /**
+   * Regression test. Chunk and document ids are derived from the file's content
+   * hash, so the same PDF added twice shares them. With `document_id` alone as
+   * the primary key, adding it to a second notebook silently MOVED it out of the
+   * first, and removing it from either deleted the chunks from both.
+   */
+  it("stays in the first notebook when added to a second", async () => {
+    const { store, vectorStore, embedder } = await fixture();
+    const second = "other-notebook";
+
+    const children = store.childChunks(NOTEBOOK);
+    store.addDocument(second, store.getDocument(DOCUMENT_ID)!);
+    const vectors = await embedder.embedDocuments(children.map((child) => child.text));
+    vectorStore.add(second, children, vectors, embedder.modelId);
+
+    assert.equal(store.listDocuments(NOTEBOOK).length, 1, "the first notebook keeps it");
+    assert.equal(store.listDocuments(second).length, 1);
+    assert.equal(store.childChunks(NOTEBOOK).length, 4);
+    assert.equal(store.childChunks(second).length, 4);
+  });
+
+  it("keeps the shared chunks when removed from only one of them", async () => {
+    const { store, vectorStore, embedder } = await fixture();
+    const second = "other-notebook";
+    const children = store.childChunks(NOTEBOOK);
+    store.addDocument(second, store.getDocument(DOCUMENT_ID)!);
+    const vectors = await embedder.embedDocuments(children.map((child) => child.text));
+    vectorStore.add(second, children, vectors, embedder.modelId);
+
+    const { removed, chunksRemoved } = store.deleteDocument(second, DOCUMENT_ID);
+    vectorStore.deleteDocument(DOCUMENT_ID, second);
+
+    assert.equal(removed, true);
+    assert.equal(chunksRemoved, false, "another notebook still needs the text");
+    assert.equal(store.childChunks(NOTEBOOK).length, 4, "the survivor keeps its chunks");
+    assert.equal(store.listDocuments(second).length, 0);
+
+    // ...and the survivor is still searchable, which is the point.
+    const retriever = await Retriever.create(NOTEBOOK, { store, vectorStore, embedder });
+    const passages = await retriever.retrieve("how are failed charges retried?");
+    assert.ok(passages.length > 0, "the first notebook must still return passages");
+  });
+
+  it("deletes the chunks when the last notebook holding it removes it", async () => {
+    const { store } = await fixture();
+    const { removed, chunksRemoved } = store.deleteDocument(NOTEBOOK, DOCUMENT_ID);
+
+    assert.equal(removed, true);
+    assert.equal(chunksRemoved, true, "nothing else references it, so reclaim the space");
+    assert.equal(store.childChunks(NOTEBOOK).length, 0);
+  });
+});
