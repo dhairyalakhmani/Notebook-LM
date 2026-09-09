@@ -178,6 +178,13 @@ function never(): never {
 export const asked: { body: unknown }[] = [];
 
 export const handlers = [
+  // Signed in by default, so the existing tests exercise the app rather than
+  // the sign-in screen. Tests that want the screen override this.
+  http.get("/api/auth/me", () =>
+    HttpResponse.json({ user: "tester", createdAt: "2026-01-01T00:00:00.000Z" }),
+  ),
+  http.post("/api/auth/logout", () => HttpResponse.json({ ok: true })),
+
   http.get("/api/notebooks", () => HttpResponse.json({ notebooks: summaries })),
   http.get("/api/notebooks/:name", ({ params }) =>
     params["name"] === "networking"

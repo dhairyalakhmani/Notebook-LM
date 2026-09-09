@@ -2,6 +2,7 @@ import type { ApiErrorDto, ErrorCode } from "../../types.ts";
 
 export type ApiError =
   | { kind: "network"; message: string }
+  | { kind: "unauthorized"; message: string }
   | { kind: "not-found"; message: string }
   | { kind: "bad-request"; message: string }
   | {
@@ -63,6 +64,13 @@ async function toApiError(response: Response): Promise<ApiError> {
 
   const kind = (body?.error?.code && CODE_TO_KIND[body.error.code]) ?? undefined;
   if (kind) return { kind, message } as ApiError;
+  // The gate in front of the API answers with plain text, not our JSON error
+  // shape, so this is decided by status. A background fetch does not make the
+  // browser re-prompt - only a top-level navigation does - so the copy has to
+  // tell the reader to reload.
+  if (response.status === 401 || response.status === 403) {
+    return { kind: "unauthorized", message };
+  }
   if (response.status === 404) return { kind: "not-found", message };
   if (response.status >= 500) return { kind: "server", message };
   return { kind: "bad-request", message };

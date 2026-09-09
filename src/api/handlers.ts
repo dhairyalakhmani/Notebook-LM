@@ -34,6 +34,8 @@ import {
   sourceFile,
   vectors,
 } from "./services.ts";
+import { existsSync } from "node:fs";
+import { userRoot, userSourcesDir, userTmpDir } from "./paths.ts";
 import type {
   AskRequestDto,
   AskResponseDto,
@@ -49,33 +51,38 @@ import type {
 } from "./dto.ts";
 import { API_VERSION, MAX_UPLOAD_BYTES } from "./dto.ts";
 
-function sourcesOf(notebook: string): SourceDto[] {
-  return notebookStore()
+function sourcesOf(user: string | null, notebook: string): SourceDto[] {
+  return notebookStore(user)
     .sourcesIn(notebook)
-    .map((source) => toSourceDto(source, sourceFile(source.document.documentId) !== null));
+    .map((source) => toSourceDto(source, sourceFile(user, source.document.documentId) !== null));
 }
 
 export function registerReadRoutes(): void {
-  route("GET", "/api/health", async (): Promise<HealthDto> => {
+  route("GET", "/api/health", async ({ user }): Promise<HealthDto> => {
     const embedder = await getEmbedder();
     return {
       apiVersion: API_VERSION,
       groqModel: config.GROQ_MODEL,
       embedder: { modelId: embedder.modelId, dimensions: embedder.dimensions },
-      notebooks: notebookStore().listNotebooks().length,
+      // Health is the one route that needs no credentials, so it must not
+      // create anything: opening a store would leave empty databases at the
+      // storage root for any anonymous caller.
+      notebooks: existsSync(join(userRoot(user), "notebook.db"))
+        ? notebookStore(user).listNotebooks().length
+        : 0,
     };
   });
 
-  route("GET", "/api/notebooks", (): { notebooks: NotebookSummaryDto[] } => {
-    return { notebooks: notebookStore().listNotebooks().map(toNotebookSummaryDto) };
+  route("GET", "/api/notebooks", ({ user }): { notebooks: NotebookSummaryDto[] } => {
+    return { notebooks: notebookStore(user).listNotebooks().map(toNotebookSummaryDto) };
   });
 
-  route("GET", "/api/notebooks/:notebook", ({ params, query }): NotebookDto => {
+  route("GET", "/api/notebooks/:notebook", ({ params, query, user }): NotebookDto => {
     const notebook = notebookName(params[0]!);
-    const store = notebookStore();
+    const store = notebookStore(user);
     if (!store.notebookExists(notebook)) throw notFound(`no notebook '${notebook}'`);
 
-    const sources = sourcesOf(notebook);
+    const sources = sourcesOf(user, notebook);
 
     const byFilename = new Map(sources.map((source) => [source.filename, source.id]));
     const resolveSourceId = (filename: string) => byFilename.get(filename) ?? null;
@@ -95,16 +102,16 @@ export function registerReadRoutes(): void {
   route(
     "GET",
     "/api/notebooks/:notebook/passages",
-    async ({ params, query }): Promise<PassageSearchDto> => {
+    async ({ params, query, user }): Promise<PassageSearchDto> => {
       const notebook = notebookName(params[0]!);
-      const store = notebookStore();
+      const store = notebookStore(user);
       if (!store.notebookExists(notebook)) throw notFound(`no notebook '${notebook}'`);
 
       const q = requiredQuery(query, "q");
       const k = intQuery(query, "k", config.CONTEXT_K, 1, 50);
       const sourceIds = documentIdList(query, "sourceIds");
 
-      const retriever = await retrieverFor(notebook);
+      const retriever = await retrieverFor(user, notebook);
       const started = performance.now();
       const passages = await retriever.retrieve(q, {
         k,
@@ -120,11 +127,11 @@ export function registerReadRoutes(): void {
     },
   );
 
-  route("GET", "/api/sources/:id/file", async ({ params, request, response }) => {
+  route("GET", "/api/sources/:id/file", async ({ params, request, response, user }) => {
     const id = documentId(params[0]!);
-    if (!notebookStore().getDocument(id)) throw notFound(`no source ${id}`);
+    if (!notebookStore(user).getDocument(id)) throw notFound(`no source ${id}`);
 
-    const path = sourceFile(id);
+    const path = sourceFile(user, id);
     if (!path) {
       throw notFound(
         `source ${id} has no file on disk. It was ingested before the original ` +
@@ -135,28 +142,32 @@ export function registerReadRoutes(): void {
     return HANDLED;
   });
 
-  route("GET", "/api/sources/:id/outline", ({ params }): { sections: OutlineSectionDto[] } => {
-    const id = documentId(params[0]!);
-    const store = notebookStore();
-    if (!store.getDocument(id)) throw notFound(`no source ${id}`);
-    return { sections: store.outline(id).map(toOutlineDto) };
-  });
+  route(
+    "GET",
+    "/api/sources/:id/outline",
+    ({ params, user }): { sections: OutlineSectionDto[] } => {
+      const id = documentId(params[0]!);
+      const store = notebookStore(user);
+      if (!store.getDocument(id)) throw notFound(`no source ${id}`);
+      return { sections: store.outline(id).map(toOutlineDto) };
+    },
+  );
 }
 
 // Hands freed pages back to the filesystem. Skipped unless a delete actually
 // reclaimed something, since VACUUM rewrites the whole database.
-function reclaim(what: string): void {
-  const freed = notebookStore().compact() + vectors().compact();
+function reclaim(user: string | null, what: string): void {
+  const freed = notebookStore(user).compact() + vectors(user).compact();
   if (freed > 0) console.log(`reclaimed ${(freed / 1_000_000).toFixed(1)} MB after ${what}`);
 }
 
 export function registerWriteRoutes(): void {
-  route("POST", "/api/notebooks", ({ request }): Promise<NotebookSummaryDto> =>
+  route("POST", "/api/notebooks", ({ request, user }): Promise<NotebookSummaryDto> =>
     (async () => {
       const body = await readJson<{ name?: unknown }>(request);
       if (typeof body.name !== "string") throw badRequest("a 'name' is required");
       const name = notebookName(body.name);
-      const store = notebookStore();
+      const store = notebookStore(user);
       if (!store.createNotebook(name)) throw conflict(`notebook '${name}' already exists`);
       return {
         name,
@@ -171,9 +182,9 @@ export function registerWriteRoutes(): void {
   route(
     "POST",
     "/api/notebooks/:notebook/ask",
-    async ({ params, request }): Promise<AskResponseDto> => {
+    async ({ params, request, user }): Promise<AskResponseDto> => {
       const notebook = notebookName(params[0]!);
-      const store = notebookStore();
+      const store = notebookStore(user);
       if (!store.notebookExists(notebook)) throw notFound(`no notebook '${notebook}'`);
 
       const body = await readJson<AskRequestDto>(request);
@@ -185,7 +196,7 @@ export function registerWriteRoutes(): void {
       const result = await askInNotebook(notebook, question, {
         store,
         model: completionModel(),
-        retriever: await retrieverFor(notebook),
+        retriever: await retrieverFor(user, notebook),
         ...(body.k === undefined ? {} : { k: Math.min(50, Math.max(1, Math.trunc(body.k))) }),
         ...(sourceIds === undefined ? {} : { sourceIds }),
         ...(body.history === false ? { stateless: true } : {}),
@@ -204,9 +215,9 @@ export function registerWriteRoutes(): void {
     },
   );
 
-  route("POST", "/api/notebooks/:notebook/sources", async ({ params, query, request }) => {
+  route("POST", "/api/notebooks/:notebook/sources", async ({ params, query, request, user }) => {
     const notebook = notebookName(params[0]!);
-    const store = notebookStore();
+    const store = notebookStore(user);
     if (!store.notebookExists(notebook)) {
       store.createNotebook(notebook);
     }
@@ -214,10 +225,10 @@ export function registerWriteRoutes(): void {
     const filename = uploadFilename(query);
     const extension = extname(filename).toLowerCase();
 
-    await mkdir(config.TMP_DIR, { recursive: true });
-    await mkdir(config.SOURCES_DIR, { recursive: true });
+    await mkdir(userTmpDir(user), { recursive: true });
+    await mkdir(userSourcesDir(user), { recursive: true });
 
-    const staging = join(config.TMP_DIR, `${randomUUID()}${extension}`);
+    const staging = join(userTmpDir(user), `${randomUUID()}${extension}`);
 
     let received: { bytes: number; hash: string };
     try {
@@ -244,16 +255,17 @@ export function registerWriteRoutes(): void {
       if (existing) {
         return {
           status: "already-added" as const,
-          source: toSourceDto(existing, sourceFile(received.hash) !== null),
+          source: toSourceDto(existing, sourceFile(user, received.hash) !== null),
         };
       }
     }
 
     // Move it to its content-addressed home so ingest can adopt it in place.
-    const target = join(config.SOURCES_DIR, `${received.hash}${extension}`);
+    const target = join(userSourcesDir(user), `${received.hash}${extension}`);
     await rename(staging, target);
 
     const job = enqueue({
+      user,
       notebook,
       filename,
       bytes: received.bytes,
@@ -262,19 +274,19 @@ export function registerWriteRoutes(): void {
     return { status: "accepted" as const, jobId: job.jobId };
   });
 
-  route("GET", "/api/ingest/:jobId", ({ params }): IngestJobDto => {
-    const job = getJob(params[0]!);
+  route("GET", "/api/ingest/:jobId", ({ params, user }): IngestJobDto => {
+    const job = getJob(params[0]!, user);
     if (!job) throw notFound(`no ingest job ${params[0]!}`);
     return job;
   });
 
-  route("GET", "/api/notebooks/:notebook/ingests", ({ params }): { jobs: IngestJobDto[] } => {
-    return { jobs: jobsFor(notebookName(params[0]!)) };
+  route("GET", "/api/notebooks/:notebook/ingests", ({ params, user }): { jobs: IngestJobDto[] } => {
+    return { jobs: jobsFor(notebookName(params[0]!), user) };
   });
 
-  route("GET", "/api/ingest/:jobId/events", ({ params, request, response }) => {
+  route("GET", "/api/ingest/:jobId/events", ({ params, request, response, user }) => {
     const jobId = params[0]!;
-    if (!getJob(jobId)) throw notFound(`no ingest job ${jobId}`);
+    if (!getJob(jobId, user)) throw notFound(`no ingest job ${jobId}`);
 
     const lastSeen = Number(request.headers["last-event-id"] ?? 0);
     const stream = openSse(response);
@@ -296,23 +308,23 @@ export function registerWriteRoutes(): void {
     return HANDLED;
   });
 
-  route("DELETE", "/api/ingest/:jobId", ({ params }): { cancelled: boolean } => {
-    return { cancelled: cancel(params[0]!) };
+  route("DELETE", "/api/ingest/:jobId", ({ params, user }): { cancelled: boolean } => {
+    return { cancelled: cancel(params[0]!, user) };
   });
 
   route(
     "DELETE",
     "/api/notebooks/:notebook/sources/:id",
-    async ({ params }): Promise<DeleteSourceDto> => {
+    async ({ params, user }): Promise<DeleteSourceDto> => {
       const notebook = notebookName(params[0]!);
       const id = documentId(params[1]!);
-      const store = notebookStore();
+      const store = notebookStore(user);
 
-      const path = sourceFile(id);
+      const path = sourceFile(user, id);
       const { removed, chunksRemoved } = store.deleteDocument(notebook, id);
       if (!removed) throw notFound(`notebook '${notebook}' has no source ${id}`);
 
-      vectors().deleteDocument(id, notebook);
+      vectors(user).deleteDocument(id, notebook);
 
       let fileRemoved = false;
       if (chunksRemoved && path) {
@@ -324,43 +336,47 @@ export function registerWriteRoutes(): void {
         }
       }
 
-      invalidateNotebook(notebook);
-      if (chunksRemoved) reclaim(`source ${id}`);
+      invalidateNotebook(user, notebook);
+      if (chunksRemoved) reclaim(user, `source ${id}`);
       return { removed, chunksRemoved, fileRemoved };
     },
   );
 
-  route("DELETE", "/api/notebooks/:notebook", async ({ params }): Promise<DeleteNotebookDto> => {
-    const notebook = notebookName(params[0]!);
-    const store = notebookStore();
-    if (!store.notebookExists(notebook)) throw notFound(`no notebook '${notebook}'`);
+  route(
+    "DELETE",
+    "/api/notebooks/:notebook",
+    async ({ params, user }): Promise<DeleteNotebookDto> => {
+      const notebook = notebookName(params[0]!);
+      const store = notebookStore(user);
+      if (!store.notebookExists(notebook)) throw notFound(`no notebook '${notebook}'`);
 
-    // Collected BEFORE the rows go, since afterwards there is nothing to ask.
-    const held = store.sourcesIn(notebook).map((source) => ({
-      id: source.document.documentId,
-      path: sourceFile(source.document.documentId),
-    }));
+      // Collected BEFORE the rows go, since afterwards there is nothing to ask.
+      const held = store.sourcesIn(notebook).map((source) => ({
+        id: source.document.documentId,
+        path: sourceFile(user, source.document.documentId),
+      }));
 
-    const { documentIds, messagesRemoved } = store.deleteNotebook(notebook);
+      const { documentIds, messagesRemoved } = store.deleteNotebook(notebook);
 
-    for (const source of held) {
-      vectors().deleteDocument(source.id, notebook);
-      const stillReferenced = store.notebooksWith(source.id) > 0;
-      if (!stillReferenced && source.path) {
-        await rm(source.path, { force: true }).catch(() => {
-          // Unreferenced bytes left behind are untidy, not broken.
-        });
+      for (const source of held) {
+        vectors(user).deleteDocument(source.id, notebook);
+        const stillReferenced = store.notebooksWith(source.id) > 0;
+        if (!stillReferenced && source.path) {
+          await rm(source.path, { force: true }).catch(() => {
+            // Unreferenced bytes left behind are untidy, not broken.
+          });
+        }
       }
-    }
 
-    invalidateNotebook(notebook);
-    reclaim(`notebook ${notebook}`);
-    return { removed: true, sourcesReleased: documentIds.length, messagesRemoved };
-  });
+      invalidateNotebook(user, notebook);
+      reclaim(user, `notebook ${notebook}`);
+      return { removed: true, sourcesReleased: documentIds.length, messagesRemoved };
+    },
+  );
 
-  route("DELETE", "/api/notebooks/:notebook/messages", ({ params }): { cleared: number } => {
+  route("DELETE", "/api/notebooks/:notebook/messages", ({ params, user }): { cleared: number } => {
     const notebook = notebookName(params[0]!);
-    const store = notebookStore();
+    const store = notebookStore(user);
     if (!store.notebookExists(notebook)) throw notFound(`no notebook '${notebook}'`);
     return { cleared: store.clearMessages(notebook) };
   });

@@ -1,3 +1,5 @@
+import type { ApiError } from "./lib/http.ts";
+
 export interface Message {
   title: string;
   body: string;
@@ -20,6 +22,14 @@ export const messages = {
     title: "Delete this notebook?",
     body: "Its conversation is deleted for good. Sources shared with another notebook are kept.",
     action: "Delete",
+  },
+
+  signInAgain: {
+    title: "Please sign in again",
+    // A background request cannot make the browser show its credentials box -
+    // only a top-level navigation can - so reloading is the actual remedy.
+    body: "Your access has changed or expired. Reload the page to sign in again.",
+    action: "Reload",
   },
 
   notebookMissing: {
@@ -129,10 +139,12 @@ export const messages = {
 
 export type MessageId = keyof typeof messages;
 
-export function messageForError(kind: string): Message {
+export function messageForError(kind: ApiError["kind"]): Message {
   switch (kind) {
     case "network":
       return messages.notebooksFailed;
+    case "unauthorized":
+      return messages.signInAgain;
     case "not-found":
       return messages.notebookMissing;
     case "quota":
@@ -146,7 +158,8 @@ export function messageForError(kind: string): Message {
       return { title: "That file is too large", body: "The limit is 200 MB." };
     case "aborted":
       return { title: "Cancelled", body: "" };
-    default:
+    case "bad-request":
+    case "server":
       return messages.unexpected;
   }
 }

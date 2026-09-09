@@ -7,6 +7,9 @@ export type {
   BlockKindDto,
   CitationDto,
   DeleteNotebookDto,
+  LoginRequestDto,
+  RegisterRequestDto,
+  SessionDto,
   DeleteSourceDto,
   ErrorCode,
   HealthDto,
@@ -31,4 +34,10 @@ export type {
   UploadResponseDto,
 } from "../../src/api/dto.ts";
 
-export { API_VERSION, MAX_UPLOAD_BYTES, MIN_QUOTE_CHARS } from "../../src/api/dto.ts";
+export {
+  API_VERSION,
+  MAX_PASSWORD_CHARS,
+  MAX_UPLOAD_BYTES,
+  MIN_PASSWORD_CHARS,
+  MIN_QUOTE_CHARS,
+} from "../../src/api/dto.ts";

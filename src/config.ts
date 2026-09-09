@@ -75,6 +75,13 @@ export const MIN_RELEVANCE_COSINE = 0;
 export const STORAGE_DIR =
   process.env["NOTEBOOK_STORAGE_DIR"] ?? resolve(import.meta.dirname, "..", "storage");
 
+// Deliberately not per-user: cache entries are keyed by a hash of the text, so
+// they carry no notion of who ingested what, and sharing them means the second
+// person to add a document pays 9ms instead of 50 seconds. The forked ingest
+// worker runs with NOTEBOOK_STORAGE_DIR pointed at one user's directory, so
+// without this the cache would silently become per-user too.
+export const CACHE_DIR = process.env["NOTEBOOK_CACHE_DIR"] ?? STORAGE_DIR;
+
 export const SOURCES_DIR = join(STORAGE_DIR, "sources");
 
 export const TMP_DIR = join(STORAGE_DIR, "tmp");
@@ -83,6 +90,14 @@ export const TMP_DIR = join(STORAGE_DIR, "tmp");
 export const API_HOST = "127.0.0.1";
 
 export const API_PORT = Number(process.env["NOTEBOOK_API_PORT"] ?? 8787);
+
+// Set NOTEBOOK_SIGNUP_CODE to require it when registering. Without it anyone
+// who has the URL can create an account and spend this deployment's LLM quota.
+export const SIGNUP_CODE = process.env["NOTEBOOK_SIGNUP_CODE"] ?? null;
+
+// Session cookies are marked Secure only where the connection is https, so
+// that signing in over http://localhost still works.
+export const REQUIRE_SECURE_COOKIE = process.env["NOTEBOOK_SECURE_COOKIE"] === "1";
 
 export const INGEST_MAX_CONCURRENT = 1;
 

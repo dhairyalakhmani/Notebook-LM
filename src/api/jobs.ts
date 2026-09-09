@@ -4,6 +4,7 @@ import { unlink } from "node:fs/promises";
 import { resolve } from "node:path";
 import * as config from "../config.ts";
 import { invalidateNotebook } from "./services.ts";
+import { userRoot } from "./paths.ts";
 import type { ChildProcess } from "node:child_process";
 import type { IngestEventDto, IngestJobDto, IngestStatusDto } from "./dto.ts";
 
@@ -11,6 +12,7 @@ const WORKER = resolve(import.meta.dirname, "ingestWorker.ts");
 
 interface Job {
   jobId: string;
+  user: string | null;
   notebook: string;
   filename: string;
   bytes: number;
@@ -49,7 +51,7 @@ function publish(job: Job, event: IngestEventDto): void {
   job.finishedAt = new Date().toISOString();
   job.child = null;
 
-  if (event.type === "done") invalidateNotebook(job.notebook);
+  if (event.type === "done") invalidateNotebook(job.user, job.notebook);
 
   void cleanUp(job);
   running -= 1;
@@ -82,7 +84,18 @@ function start(job: Job): void {
   job.status = "running";
   running += 1;
 
-  const child = fork(WORKER, [], { stdio: ["ignore", "inherit", "inherit", "ipc"] });
+  const child = fork(WORKER, [], {
+    stdio: ["ignore", "inherit", "inherit", "ipc"],
+    // The child is a separate process and config.STORAGE_DIR is read from the
+    // environment at module load, so this redirects the whole pipeline - store,
+    // vectors, sources - at one caller's directory with no change inside it.
+    // CACHE_DIR stays at the root so the embedding cache is shared.
+    env: {
+      ...process.env,
+      NOTEBOOK_STORAGE_DIR: userRoot(job.user),
+      NOTEBOOK_CACHE_DIR: config.CACHE_DIR,
+    },
+  });
   job.child = child;
 
   child.on("message", (event) => publish(job, event as IngestEventDto));
@@ -113,6 +126,7 @@ function start(job: Job): void {
 }
 
 export function enqueue(input: {
+  user: string | null;
   notebook: string;
   filename: string;
   bytes: number;
@@ -121,6 +135,7 @@ export function enqueue(input: {
 }): IngestJobDto {
   const job: Job = {
     jobId: randomUUID(),
+    user: input.user,
     notebook: input.notebook,
     filename: input.filename,
     bytes: input.bytes,
@@ -152,9 +167,13 @@ export function snapshot(job: Job | IngestJobDto): IngestJobDto {
   };
 }
 
-export function getJob(jobId: string): IngestJobDto | null {
+// Scoped to the caller. A job id is an unguessable UUID, but jobsFor() looks
+// up by notebook NAME - and two callers can each own a notebook called
+// "shared", so without this one of them could read the other's ingests.
+export function getJob(jobId: string, user: string | null): IngestJobDto | null {
   const job = jobs.get(jobId);
-  return job ? snapshot(job) : null;
+  if (!job || job.user !== user) return null;
+  return snapshot(job);
 }
 
 export function subscribe(
@@ -176,9 +195,9 @@ export function subscribe(
   return { unsubscribe: () => job.listeners.delete(listener), finished: false };
 }
 
-export function cancel(jobId: string): boolean {
+export function cancel(jobId: string, user: string | null): boolean {
   const job = jobs.get(jobId);
-  if (!job || job.finishedAt !== null) return false;
+  if (!job || job.user !== user || job.finishedAt !== null) return false;
 
   if (job.child) {
     job.child.kill("SIGTERM");
@@ -192,9 +211,9 @@ export function cancel(jobId: string): boolean {
   return true;
 }
 
-export function jobsFor(notebook: string): IngestJobDto[] {
+export function jobsFor(notebook: string, user: string | null): IngestJobDto[] {
   return [...jobs.values()]
-    .filter((job) => job.notebook === notebook)
+    .filter((job) => job.user === user && job.notebook === notebook)
     .sort((a, b) => b.startedAt.localeCompare(a.startedAt))
     .map(snapshot);
 }

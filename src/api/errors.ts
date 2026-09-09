@@ -33,6 +33,18 @@ export function conflict(message: string): HttpError {
   return new HttpError(409, "conflict", message);
 }
 
+export function unauthorized(message: string): HttpError {
+  return new HttpError(401, "unauthorized", message);
+}
+
+export function nameTaken(message: string): HttpError {
+  return new HttpError(409, "name_taken", message);
+}
+
+export function tooManyAttempts(message: string, retryAfterMs: number): HttpError {
+  return new HttpError(429, "rate_limited", message, { retryAfterMs });
+}
+
 export function toApiError(error: unknown): { status: number; body: ApiErrorDto } {
   if (error instanceof HttpError) {
     return {

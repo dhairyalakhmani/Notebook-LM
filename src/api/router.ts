@@ -7,6 +7,9 @@ export interface RequestContext {
   response: ServerResponse;
   params: string[];
   query: URLSearchParams;
+  // Who authenticated, or null when no credentials are configured. Handlers
+  // pass this to services.ts, which is what selects their storage.
+  user: string | null;
 }
 
 type Handler = (context: RequestContext) => unknown;
@@ -31,6 +34,7 @@ export const HANDLED = Symbol("handled");
 export async function handleApi(
   request: IncomingMessage,
   response: ServerResponse,
+  user: string | null = null,
 ): Promise<boolean> {
   const url = new URL(request.url ?? "/", "http://localhost");
   let path: string;
@@ -62,6 +66,7 @@ export async function handleApi(
         response,
         params: match.slice(1).map((value) => value ?? ""),
         query: url.searchParams,
+        user,
       });
       if (result !== HANDLED && !response.writableEnded) {
         sendJson(response, method === "POST" ? 201 : 200, result);

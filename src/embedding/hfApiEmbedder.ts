@@ -42,7 +42,7 @@ export class HfApiEmbedder implements Embedder {
     this.cache =
       options.cache === undefined
         ? config.CACHE_EMBEDDINGS
-          ? new EmbeddingCache()
+          ? new EmbeddingCache(config.CACHE_DIR)
           : null
         : options.cache;
     this.fetchImpl = options.fetchImpl ?? fetch;

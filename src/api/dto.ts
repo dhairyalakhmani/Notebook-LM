@@ -8,6 +8,8 @@ export const MAX_UPLOAD_BYTES = 200 * 1024 * 1024;
 
 export type ErrorCode =
   | "bad_request"
+  | "unauthorized"
+  | "name_taken"
   | "not_found"
   | "conflict"
   | "unsupported_type"
@@ -254,4 +256,27 @@ export interface DeleteNotebookDto {
   removed: boolean;
   sourcesReleased: number;
   messagesRemoved: number;
+}
+
+// ------------------------------------------------------------------ accounts
+
+export const MIN_PASSWORD_CHARS = 10;
+export const MAX_PASSWORD_CHARS = 200;
+
+/** Who the session belongs to. The password never appears in any DTO. */
+export interface SessionDto {
+  user: string;
+  createdAt: string;
+}
+
+export interface RegisterRequestDto {
+  user: string;
+  password: string;
+  /** Required only when the deployment sets a signup code. */
+  code?: string;
+}
+
+export interface LoginRequestDto {
+  user: string;
+  password: string;
 }

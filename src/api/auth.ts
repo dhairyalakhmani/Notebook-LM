@@ -1,66 +1,170 @@
-import { createHash, timingSafeEqual } from "node:crypto";
+import { existsSync } from "node:fs";
+import * as config from "../config.ts";
+import {
+  AccountStore,
+  clearFailures,
+  recordFailure,
+  SESSION_COOKIE,
+  SESSION_TTL_MS,
+  throttleFor,
+} from "./accounts.ts";
+import { badRequest, nameTaken, tooManyAttempts, unauthorized } from "./errors.ts";
+import { isSafeUsername } from "./paths.ts";
+import { route } from "./router.ts";
+import { MAX_PASSWORD_CHARS, MIN_PASSWORD_CHARS } from "./dto.ts";
+import { readJson } from "./http.ts";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import type { LoginRequestDto, RegisterRequestDto, SessionDto } from "./dto.ts";
 
-export type Users = ReadonlyMap<string, string>;
+let accounts: AccountStore | null = null;
 
-export function readCredentials(raw: string | undefined): Users {
-  const users = new Map<string, string>();
-  for (const entry of (raw ?? "").split(",")) {
-    const trimmed = entry.trim();
-    if (trimmed === "") continue;
-    const at = trimmed.indexOf(":");
-    if (at <= 0 || at === trimmed.length - 1) {
-      throw new Error(`NOTEBOOK_AUTH entry is not "name:password": ${JSON.stringify(trimmed)}`);
-    }
-    users.set(trimmed.slice(0, at), trimmed.slice(at + 1));
+/** The account database is shared, and lives at the storage root: it is what
+ *  maps a session to the per-user directory underneath it. */
+export function accountStore(): AccountStore {
+  accounts ??= new AccountStore(config.STORAGE_DIR);
+  return accounts;
+}
+
+export function closeAccounts(): void {
+  accounts?.close();
+  accounts = null;
+}
+
+export function readCookie(header: string | undefined, name: string): string | null {
+  if (!header) return null;
+  for (const part of header.split(";")) {
+    const at = part.indexOf("=");
+    if (at === -1) continue;
+    if (part.slice(0, at).trim() !== name) continue;
+    return decodeURIComponent(part.slice(at + 1).trim());
   }
-  return users;
+  return null;
 }
 
-// Compared as digests so the check is constant time AND independent of length;
-// comparing the raw strings would return early on a length mismatch and leak
-// how long the real password is.
-function sameSecret(given: string, expected: string): boolean {
-  const a = createHash("sha256").update(given, "utf8").digest();
-  const b = createHash("sha256").update(expected, "utf8").digest();
-  return timingSafeEqual(a, b);
+/** The signed-in user, or null. Identity, because the name selects storage. */
+export function currentUser(request: IncomingMessage): string | null {
+  const token = readCookie(request.headers.cookie, SESSION_COOKIE);
+  if (token === null) return null;
+  return accountStore().resolveSession(token)?.user ?? null;
 }
 
-export function isAuthorised(request: IncomingMessage, users: Users): boolean {
-  const header = request.headers.authorization;
-  if (header === undefined || !header.startsWith("Basic ")) return false;
-
-  let decoded: string;
-  try {
-    decoded = Buffer.from(header.slice("Basic ".length), "base64").toString("utf8");
-  } catch {
-    return false;
-  }
-
-  const at = decoded.indexOf(":");
-  if (at === -1) return false;
-
-  // A password may contain a colon; a username may not.
-  const expected = users.get(decoded.slice(0, at));
-  if (expected === undefined) return false;
-  return sameSecret(decoded.slice(at + 1), expected);
+function setSessionCookie(response: ServerResponse, token: string): void {
+  response.setHeader(
+    "Set-Cookie",
+    [
+      `${SESSION_COOKIE}=${encodeURIComponent(token)}`,
+      "Path=/",
+      "HttpOnly",
+      "SameSite=Lax",
+      // Secure is omitted on plain http so this works on localhost; a deployment
+      // is behind TLS, where the platform terminates https for us.
+      ...(config.REQUIRE_SECURE_COOKIE ? ["Secure"] : []),
+      `Max-Age=${Math.floor(SESSION_TTL_MS / 1000)}`,
+    ].join("; "),
+  );
 }
 
-export function demandAuth(response: ServerResponse): void {
-  response.writeHead(401, {
-    "WWW-Authenticate": 'Basic realm="NoteBook", charset="UTF-8"',
-    "Content-Type": "text/plain; charset=utf-8",
-    "Cache-Control": "no-store",
-  });
-  response.end("Authentication required.\n");
+function clearSessionCookie(response: ServerResponse): void {
+  response.setHeader("Set-Cookie", `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`);
 }
 
-// Exempt so a platform health check does not need credentials. It reveals the
-// model name and embedding dimensions, and nothing about any document.
+/** Routes that work without a session. Everything else needs one. */
 export function isPublicPath(url: string | undefined): boolean {
-  return (url ?? "").split("?")[0] === "/api/health";
+  const path = (url ?? "").split("?")[0] ?? "";
+  return (
+    path === "/api/health" ||
+    path === "/api/auth/register" ||
+    path === "/api/auth/login" ||
+    path === "/api/auth/logout" ||
+    path === "/api/auth/me"
+  );
 }
 
-export function isLoopback(host: string): boolean {
-  return host === "127.0.0.1" || host === "::1" || host === "localhost";
+function checkPassword(password: unknown): string {
+  if (typeof password !== "string") throw badRequest("password must be a string");
+  if (password.length < MIN_PASSWORD_CHARS) {
+    throw badRequest(`password must be at least ${MIN_PASSWORD_CHARS} characters`);
+  }
+  if (password.length > MAX_PASSWORD_CHARS) {
+    throw badRequest(`password must be at most ${MAX_PASSWORD_CHARS} characters`);
+  }
+  return password;
+}
+
+function checkName(name: unknown): string {
+  if (typeof name !== "string") throw badRequest("user must be a string");
+  const trimmed = name.trim();
+  if (!isSafeUsername(trimmed)) {
+    throw badRequest(
+      "user must start with a letter or digit and contain only letters, digits, dot, dash or underscore (max 32)",
+    );
+  }
+  return trimmed;
+}
+
+export function registerAuthRoutes(): void {
+  route("POST", "/api/auth/register", async ({ request, response }): Promise<SessionDto> => {
+    const body = await readJson<RegisterRequestDto>(request);
+    const name = checkName(body.user);
+    const password = checkPassword(body.password);
+
+    // Optional gate on who may sign up at all. Without it, anyone with the URL
+    // can create an account and spend the deployment's LLM quota.
+    if (config.SIGNUP_CODE !== null && body.code !== config.SIGNUP_CODE) {
+      throw unauthorized("that signup code is not right");
+    }
+
+    const store = accountStore();
+    if (store.exists(name)) throw nameTaken(`the name '${name}' is taken`);
+    await store.create(name, password);
+
+    const token = store.issueSession(name);
+    setSessionCookie(response, token);
+    return { user: name, createdAt: new Date().toISOString() };
+  });
+
+  route("POST", "/api/auth/login", async ({ request, response }): Promise<SessionDto> => {
+    const body = await readJson<LoginRequestDto>(request);
+    const name = typeof body.user === "string" ? body.user.trim() : "";
+    const password = typeof body.password === "string" ? body.password : "";
+
+    const waitMs = throttleFor(name);
+    if (waitMs > 0) {
+      throw tooManyAttempts("too many failed attempts; wait a moment", waitMs);
+    }
+
+    const store = accountStore();
+    if (!(await store.verify(name, password))) {
+      recordFailure(name);
+      // One message for both causes: saying "no such user" would let anyone
+      // enumerate who has an account.
+      throw unauthorized("that name and password do not match");
+    }
+
+    clearFailures(name);
+    const token = store.issueSession(name);
+    setSessionCookie(response, token);
+    return { user: name, createdAt: new Date().toISOString() };
+  });
+
+  route("POST", "/api/auth/logout", ({ request, response }): { ok: true } => {
+    const token = readCookie(request.headers.cookie, SESSION_COOKIE);
+    if (token !== null) accountStore().revokeSession(token);
+    clearSessionCookie(response);
+    return { ok: true };
+  });
+
+  route("GET", "/api/auth/me", ({ request }): SessionDto => {
+    const token = readCookie(request.headers.cookie, SESSION_COOKIE);
+    const session = token === null ? null : accountStore().resolveSession(token);
+    if (!session) throw unauthorized("not signed in");
+    return { user: session.user, createdAt: session.createdAt };
+  });
+}
+
+/** Whether anyone has registered yet, so the UI can offer "create the first
+ *  account" rather than a login form nobody can satisfy. */
+export function hasAccounts(): boolean {
+  if (!existsSync(`${config.STORAGE_DIR}/accounts.db`)) return false;
+  return accountStore().count() > 0;
 }

@@ -83,17 +83,30 @@ cache. It is never pruned, deliberately — it is what makes re-ingesting a
 document free. It is also pure cache: delete the file and it rebuilds, at the
 cost of re-embedding.
 
-Two things to understand before you add people:
+**Each person gets their own workspace.** Every name in `NOTEBOOK_AUTH` gets its
+own directory under `storage/users/<name>/`, holding its own `notebook.db`,
+`vectors.db` and `sources/`. Two people can own a notebook of the same name
+without colliding, and neither can see or delete the other's.
 
-- **One shared workspace.** Everybody who can log in sees every notebook and
-  can delete anyone's sources. There is no ownership anywhere in the schema.
-- **One shared quota.** 8000 tokens/minute is per API key, so it is roughly one
-  question a minute *for the whole deployment*, not per person. Raise the Groq
-  tier before inviting anyone. Uploads, by contrast, queue properly and report
-  their position.
+Isolation is by **directory, not by an owner column**, which is both simpler and
+stronger: there is no query that could forget a `WHERE` clause and return
+someone else's notebooks, because the rows are not in the same file. It needed
+no schema change — the stores already took a storage directory. Asking for
+another person's notebook returns `404`, because it genuinely is not there.
+
+The one thing deliberately shared is `embeddings.db`, the content-hash embedding
+cache. Entries are keyed by a hash of the text and carry no notion of who
+ingested what, so sharing it means the second person to add a document waits
+9 ms instead of 50 seconds.
+
+**What isolation does not fix: the quota.** 8000 tokens/minute is per API key,
+and everyone shares yours, so it is roughly one question a minute *for the whole
+deployment*, not per person. Raise the Groq tier before inviting anyone. Uploads
+are fine — they queue properly and report each waiter's position.
 
 Running it locally needs none of this: the default bind is loopback, and with
-`NOTEBOOK_AUTH` unset there is no gate.
+`NOTEBOOK_AUTH` unset there is no gate and no `users/` directory — storage stays
+exactly where it was.
 
 The CLI works on the same data:
 
