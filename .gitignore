@@ -29,5 +29,7 @@ web/dist/
 coverage/
 *.local
 
-# throwaway storage for hand-verifying destructive routes (npm run api:sandbox)
-storage-sandbox/
+# throwaway storage: the sandbox server, and any storage-* directory used to
+# verify something without touching the real one. A staged test database is a
+# thing that has already happened once.
+storage-*/

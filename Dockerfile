@@ -46,5 +46,9 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
   CMD node -e "const p=process.env.PORT||8787;fetch('http://127.0.0.1:'+p+'/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
 # 0.0.0.0 because the default bind is loopback, which a container cannot serve
-# from. PORT is read because most hosts inject it.
-CMD ["sh", "-c", "node --disable-warning=ExperimentalWarning src/api/server.ts --static web/dist --host 0.0.0.0 --port ${PORT:-8787}"]
+# from. The port comes from PORT via config.ts, so this needs no shell.
+#
+# A platform that overrides CMD with its own guess is the failure this shape
+# guards against: `npm start` runs exactly this, so an override that picks the
+# conventional script lands in the same place instead of on `vite`.
+CMD ["npm", "start"]

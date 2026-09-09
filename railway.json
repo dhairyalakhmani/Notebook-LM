@@ -4,6 +4,7 @@
     "builder": "DOCKERFILE"
   },
   "deploy": {
+    "startCommand": "npm start",
     "numReplicas": 1,
     "healthcheckPath": "/api/health",
     "restartPolicyType": "ON_FAILURE"

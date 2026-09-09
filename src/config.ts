@@ -89,7 +89,10 @@ export const TMP_DIR = join(STORAGE_DIR, "tmp");
 // ---------------------------------------------------------------- api server
 export const API_HOST = "127.0.0.1";
 
-export const API_PORT = Number(process.env["NOTEBOOK_API_PORT"] ?? 8787);
+// PORT is what every platform-as-a-service injects; NOTEBOOK_API_PORT is the
+// local override. Read here rather than interpolated into a start command, so
+// the command itself needs no shell and works the same on Windows.
+export const API_PORT = Number(process.env["NOTEBOOK_API_PORT"] ?? process.env["PORT"] ?? 8787);
 
 // Set NOTEBOOK_SIGNUP_CODE to require it when registering. Without it anyone
 // who has the URL can create an account and spend this deployment's LLM quota.
