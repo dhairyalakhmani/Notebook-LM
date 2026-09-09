@@ -1,7 +1,7 @@
 // Must come first: config.ts reads process.env at module scope.
 import "./src/env.ts";
 import { existsSync } from "node:fs";
-import { copyFile, mkdir, readdir, stat } from "node:fs/promises";
+import { copyFile, mkdir, readdir, rename, stat } from "node:fs/promises";
 import { extname, join, relative } from "node:path";
 import { Command } from "commander";
 import { ingestFile } from "./src/notebook/ingest.ts";
@@ -12,6 +12,7 @@ import { formatAnswer } from "./src/generation/answer.ts";
 import { askInNotebook } from "./src/notebook/chat.ts";
 import { supportedExtensions } from "./src/loaders/index.ts";
 import { NotebookStore } from "./src/notebook/store.ts";
+import { isSafeUsername } from "./src/api/paths.ts";
 import { formatPages, Retriever } from "./src/retrieval/index.ts";
 import { VectorStore } from "./src/search/vectorStore.ts";
 
@@ -105,6 +106,56 @@ program
       return;
     }
     console.log(`\n${linked} source(s) ${options.dryRun ? "would be linked" : "linked"}`);
+  });
+
+program
+  .command("adopt")
+  .description("move the notebooks at the storage root into one account's workspace")
+  .argument("<user>", "the account that should own them")
+  .action(async (user: string) => {
+    // Before accounts existed, everything lived at the storage root. A signed-in
+    // account reads storage/users/<name>/, so without this the notebooks you
+    // already had become invisible rather than lost.
+    if (!isSafeUsername(user)) {
+      console.error(`'${user}' is not a valid account name`);
+      process.exitCode = 1;
+      return;
+    }
+
+    const root = config.STORAGE_DIR;
+    const target = join(root, "users", user);
+    if (existsSync(join(target, "notebook.db"))) {
+      console.error(`${user} already has a workspace at ${target} - refusing to overwrite it`);
+      process.exitCode = 1;
+      return;
+    }
+    if (!existsSync(join(root, "notebook.db"))) {
+      console.log("nothing at the storage root to adopt");
+      return;
+    }
+
+    await mkdir(target, { recursive: true });
+
+    // accounts.db and embeddings.db stay at the root: the first is shared by
+    // definition, the second is a content-keyed cache shared on purpose.
+    const moved: string[] = [];
+    for (const name of ["notebook.db", "vectors.db"]) {
+      for (const suffix of ["", "-wal", "-shm"]) {
+        const from = join(root, `${name}${suffix}`);
+        if (!existsSync(from)) continue;
+        await rename(from, join(target, `${name}${suffix}`));
+        moved.push(`${name}${suffix}`);
+      }
+    }
+    if (existsSync(join(root, "sources"))) {
+      await rename(join(root, "sources"), join(target, "sources"));
+      moved.push("sources/");
+    }
+
+    console.log(`moved into ${target}:`);
+    for (const name of moved) console.log(`  ${name}`);
+    console.log(`
+${user} now owns those notebooks. Sign in as ${user} to see them.`);
   });
 
 program

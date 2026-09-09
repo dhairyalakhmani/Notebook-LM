@@ -2,9 +2,9 @@ import { useCallback, useEffect, useState } from "react";
 import { Link, Outlet, useLocation } from "react-router";
 import { applyTheme, nextTheme, readTheme } from "./theme.ts";
 import { IconButton, SkeletonList, VisuallyHidden } from "../shared/ui/primitives.tsx";
-import { useLogout, useSession } from "../features/auth/api.ts";
+import { useSession } from "../features/auth/api.ts";
 import { SignIn } from "../features/auth/SignIn.tsx";
-import authStyles from "../features/auth/auth.module.css";
+import { SignOut } from "../features/auth/SignOut.tsx";
 import styles from "./layout.module.css";
 import type { ThemeChoice } from "./theme.ts";
 
@@ -24,7 +24,6 @@ function announcementFor(pathname: string): string {
 export function RootLayout() {
   const [theme, setTheme] = useState<ThemeChoice>(() => readTheme());
   const session = useSession();
-  const logout = useLogout();
   const location = useLocation();
   const announcement = announcementFor(location.pathname);
 
@@ -44,17 +43,7 @@ export function RootLayout() {
           <span>NoteBook</span>
         </Link>
         <div className={styles.barSpacer} />
-        {session.data ? (
-          <span className={authStyles.who}>
-            <span className={authStyles.name}>{session.data.user}</span>
-            <IconButton
-              icon="close"
-              label={`Sign out ${session.data.user}`}
-              disabled={logout.isPending}
-              onClick={() => logout.mutate()}
-            />
-          </span>
-        ) : null}
+        {session.data ? <SignOut user={session.data.user} /> : null}
         <IconButton
           icon={theme === "dark" ? "moon" : "sun"}
           label={THEME_LABEL[theme]}

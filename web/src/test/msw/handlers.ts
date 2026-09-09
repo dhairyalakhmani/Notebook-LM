@@ -180,6 +180,16 @@ export const asked: { body: unknown }[] = [];
 export const handlers = [
   // Signed in by default, so the existing tests exercise the app rather than
   // the sign-in screen. Tests that want the screen override this.
+  http.get("/api/health", () =>
+    HttpResponse.json({
+      apiVersion: 1,
+      signupCodeRequired: false,
+      groqModel: "test-model",
+      embedder: { modelId: "test-embedder", dimensions: 384 },
+      notebooks: 2,
+    }),
+  ),
+
   http.get("/api/auth/me", () =>
     HttpResponse.json({ user: "tester", createdAt: "2026-01-01T00:00:00.000Z" }),
   ),

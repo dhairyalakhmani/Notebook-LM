@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Outlet, useNavigate, useParams } from "react-router";
+import { Link, Outlet, useNavigate, useParams } from "react-router";
 import { useNotebook } from "../features/notebooks/api.ts";
 import { CommandPalette } from "../features/notebooks/CommandPalette.tsx";
 import { NotebookList } from "../features/notebooks/NotebookList.tsx";
@@ -159,19 +159,30 @@ export function NotebookLayout() {
       <QueryState
         query={query}
         loading={<SkeletonList rows={4} />}
-        empty={<StateCard message={messages.notebookMissing} />}
-        error={(failure, retry) => (
-          <StateCard
-            message={
-              failure.kind === "not-found" ? messages.notebookMissing : messages.sourcesFailed
-            }
-            tone={failure.kind === "not-found" ? "neutral" : "danger"}
-          >
-            <Button variant="primary" onClick={retry}>
-              {messages.sourcesFailed.action}
-            </Button>
+        empty={
+          <StateCard message={messages.notebookMissing}>
+            <Link to="/" className={styles.backLink}>
+              {messages.notebookMissing.action}
+            </Link>
           </StateCard>
-        )}
+        }
+        error={(failure, retry) =>
+          failure.kind === "not-found" ? (
+            // A URL for a notebook that is not there - most often one left over
+            // from another account. Without a way back this is a dead end.
+            <StateCard message={messages.notebookMissing} tone="neutral">
+              <Link to="/" className={styles.backLink}>
+                {messages.notebookMissing.action}
+              </Link>
+            </StateCard>
+          ) : (
+            <StateCard message={messages.sourcesFailed} tone="danger" said={failure.message}>
+              <Button variant="primary" onClick={retry}>
+                {messages.sourcesFailed.action}
+              </Button>
+            </StateCard>
+          )
+        }
       >
         {(data) => (
           <NotebookPanes

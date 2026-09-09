@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { useLogin, useRegister } from "./api.ts";
+import { useNavigate } from "react-router";
+import { useLogin, useRegister, useSignupPolicy } from "./api.ts";
 import { asApiError } from "../../shared/lib/http.ts";
 import { MIN_PASSWORD_CHARS } from "../../types.ts";
 import { Button } from "../../shared/ui/primitives.tsx";
@@ -22,8 +23,17 @@ export function SignIn() {
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
 
+  const navigate = useNavigate();
   const login = useLogin();
   const register = useRegister();
+  const needsCode = useSignupPolicy();
+
+  // Signing in must not leave you on the URL you had before. That address
+  // belongs to whoever was signed in last, and for a new account it resolves
+  // to "no such notebook" with no way out.
+  const onSignedIn = () => {
+    void navigate("/", { replace: true });
+  };
   const pending = login.isPending || register.isPending;
   const failure = login.error ?? register.error;
 
@@ -33,9 +43,12 @@ export function SignIn() {
     const name = user.trim();
     if (name === "" || password === "") return;
     if (mode === "sign-in") {
-      login.mutate({ user: name, password });
+      login.mutate({ user: name, password }, { onSuccess: onSignedIn });
     } else {
-      register.mutate({ user: name, password, ...(code.trim() ? { code: code.trim() } : {}) });
+      register.mutate(
+        { user: name, password, ...(code.trim() ? { code: code.trim() } : {}) },
+        { onSuccess: onSignedIn },
+      );
     }
   };
 
@@ -84,7 +97,7 @@ export function SignIn() {
           ) : null}
         </div>
 
-        {mode === "create" ? (
+        {mode === "create" && needsCode.data === true ? (
           <div className={styles.field}>
             <label htmlFor="auth-code">Signup code</label>
             <input
@@ -96,7 +109,7 @@ export function SignIn() {
               autoComplete="off"
             />
             <span id="auth-code-hint" className={styles.hint}>
-              Only if you were given one.
+              This deployment requires a code to create an account.
             </span>
           </div>
         ) : null}

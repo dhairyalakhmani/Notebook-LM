@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { qk } from "../../app/queryKeys.ts";
 import { request } from "../../shared/lib/http.ts";
-import type { LoginRequestDto, SessionDto } from "../../types.ts";
+import type { HealthDto, LoginRequestDto, SessionDto } from "../../types.ts";
 
 /**
  * Who is signed in.
@@ -64,5 +64,21 @@ export function useLogout() {
       client.setQueryData(qk.session(), null);
       client.clear();
     },
+  });
+}
+
+/**
+ * Whether registering needs a signup code.
+ *
+ * Asked rather than assumed, so the field is absent when nothing requires it -
+ * an input that is usually pointless is worse than no input, because it reads
+ * as something you are missing.
+ */
+export function useSignupPolicy() {
+  return useQuery({
+    queryKey: ["signup-policy"] as const,
+    queryFn: () => request<HealthDto>("/api/health"),
+    select: (health) => health.signupCodeRequired,
+    staleTime: Infinity,
   });
 }

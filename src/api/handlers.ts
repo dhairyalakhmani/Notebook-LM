@@ -62,6 +62,7 @@ export function registerReadRoutes(): void {
     const embedder = await getEmbedder();
     return {
       apiVersion: API_VERSION,
+      signupCodeRequired: config.SIGNUP_CODE !== null,
       groqModel: config.GROQ_MODEL,
       embedder: { modelId: embedder.modelId, dimensions: embedder.dimensions },
       // Health is the one route that needs no credentials, so it must not

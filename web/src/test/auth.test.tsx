@@ -89,6 +89,34 @@ describe("signing in", () => {
     expect(screen.getByLabelText("Name")).toHaveValue("ada");
   });
 
+  it("does not ask for a signup code when the server does not require one", async () => {
+    const user = userEvent.setup();
+    signedOut();
+    renderApp();
+    await user.click(await screen.findByRole("button", { name: /Create one/ }));
+    // An input that is usually pointless reads as something you are missing.
+    expect(screen.queryByLabelText("Signup code")).not.toBeInTheDocument();
+  });
+
+  it("asks for a signup code when the server does require one", async () => {
+    const user = userEvent.setup();
+    signedOut();
+    server.use(
+      http.get("/api/health", () =>
+        HttpResponse.json({
+          apiVersion: 1,
+          signupCodeRequired: true,
+          groqModel: "test-model",
+          embedder: { modelId: "test-embedder", dimensions: 384 },
+          notebooks: 0,
+        }),
+      ),
+    );
+    renderApp();
+    await user.click(await screen.findByRole("button", { name: /Create one/ }));
+    expect(await screen.findByLabelText("Signup code")).toBeInTheDocument();
+  });
+
   it("switches to creating an account and posts to register", async () => {
     const user = userEvent.setup();
     signedOut();
@@ -121,31 +149,11 @@ describe("signing in", () => {
 });
 
 describe("when signed in", () => {
-  it("shows who you are and offers a way out", async () => {
+  it("shows which account you are using", async () => {
     renderApp();
     expect(await screen.findByText("tester")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Sign out tester" })).toBeInTheDocument();
-  });
-
-  it("signing out returns you to the sign-in screen", async () => {
-    const user = userEvent.setup();
-    let out = false;
-    server.use(
-      http.post("/api/auth/logout", () => {
-        out = true;
-        return HttpResponse.json({ ok: true });
-      }),
-      http.get("/api/auth/me", () =>
-        out
-          ? HttpResponse.json({ error: { code: "unauthorized", message: "no" } }, { status: 401 })
-          : HttpResponse.json({ user: "tester", createdAt: "2026-01-01T00:00:00.000Z" }),
-      ),
-    );
-
-    renderApp();
-    await user.click(await screen.findByRole("button", { name: "Sign out tester" }));
-
-    expect(await screen.findByRole("heading", { name: "Sign in" })).toBeInTheDocument();
-    expect(screen.queryByLabelText("Notebooks")).not.toBeInTheDocument();
+    // Signing out is a labelled button that asks first; the flow itself is
+    // covered in signedIn.test.tsx.
+    expect(screen.getByRole("button", { name: "Sign out" })).toBeInTheDocument();
   });
 });

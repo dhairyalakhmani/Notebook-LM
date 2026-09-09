@@ -32,6 +32,9 @@ export interface ApiErrorDto {
 // ──────────────────────────────────────────────────────────────────── health
 
 export interface HealthDto {
+  /** Whether registering needs a signup code. The sign-in screen asks, so it
+   *  can leave the field out entirely when nothing is required. */
+  signupCodeRequired: boolean;
   apiVersion: number;
   groqModel: string;
   embedder: { modelId: string; dimensions: number };
