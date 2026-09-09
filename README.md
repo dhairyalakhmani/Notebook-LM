@@ -37,29 +37,33 @@ npm run build && npm run ui   # http://127.0.0.1:8787 serves both
 
 ### Deploying it
 
-There are no user accounts, so access is a shared-secret gate rather than an
-identity model. `NOTEBOOK_AUTH` holds `name:password` pairs, comma-separated,
-and the server **refuses to start** if you bind anything but loopback without
-it — you cannot expose this unauthenticated by accident.
+The app has real accounts: people register, sign in, and each gets their own
+workspace. Nothing about that needs configuring — but two variables are worth
+setting on a deployment.
 
-```bash
-NOTEBOOK_AUTH="you:a-long-password,friend:another"   node src/api/server.ts --static web/dist --host 0.0.0.0
-```
+| variable | why |
+|---|---|
+| `GROQ_API_KEY` | answers and follow-up rewriting |
+| `HF_TOKEN` | embeddings |
+| `NOTEBOOK_SIGNUP_CODE` | **recommended.** Without it, anyone who finds the URL can register and spend your Groq quota. With it, only people you give the code to can create an account. |
+| `NOTEBOOK_SECURE_COOKIE=1` | **set this behind HTTPS.** It adds `Secure` to the session cookie, so it can never be sent over a plaintext connection. Left off by default so signing in on `http://localhost` works. |
 
-The gate covers the app shell as well as the API, so an unauthorised visitor
-never loads the page. `GET /api/health` is exempt, for platform health checks;
-it reveals the model name and embedding dimensions and nothing about any
-document.
+Paste the values **without quotes**. A `.env` file may wrap a token in `"..."`
+because dotenv strips those when reading a file, but a platform variable is
+taken literally — a quoted token fails as `HuggingFace API 401` at the embed
+stage.
+
+The gate itself: `/api/*` requires a session cookie, except `/api/health` and
+the four `/api/auth/*` routes. The app shell and its bundle are served to
+anyone, because the browser needs them in order to draw the sign-in screen —
+no data is in them.
 
 **On Railway** (a container, a volume, and a free HTTPS hostname):
 
 1. New project → deploy from the GitHub repo; the `Dockerfile` is picked up.
-2. Add a **volume mounted at `/data`**. Without it every notebook disappears
-   on the next deploy.
-3. Set `GROQ_API_KEY`, `HF_TOKEN` and `NOTEBOOK_AUTH`. Paste the values
-   **without quotes**: `.env` may wrap a token in `"..."` because dotenv strips
-   those when reading a file, but a platform variable is taken literally, and a
-   quoted token fails as `HuggingFace API 401` at the embed stage.
+2. Add a **volume mounted at `/data`**. Without it every account and notebook
+   disappears on the next deploy.
+3. Set the variables above.
 4. **Keep replicas at 1.** SQLite is one local file with a single writer; two
    replicas would get two volumes and silently diverge.
 
@@ -69,6 +73,10 @@ binds `0.0.0.0` and sets `NOTEBOOK_STORAGE_DIR=/data`. The image prunes
 needed only for local embedding or the reranker, both lazily imported. It keeps
 pdfjs-dist's optional `@napi-rs/canvas`, without which PDF text extraction
 crashes on import.
+
+The deployment starts with no accounts and an empty volume. Your local
+notebooks stay local: sources are uploaded per account, so you add them again
+through the UI on the deployed copy.
 
 **Deleting really frees the volume.** Removing a source deletes its chunks, its
 vectors and — when no other notebook still references those bytes — the stored
@@ -83,10 +91,12 @@ cache. It is never pruned, deliberately — it is what makes re-ingesting a
 document free. It is also pure cache: delete the file and it rebuilds, at the
 cost of re-embedding.
 
-**Each person gets their own workspace.** Every name in `NOTEBOOK_AUTH` gets its
-own directory under `storage/users/<name>/`, holding its own `notebook.db`,
-`vectors.db` and `sources/`. Two people can own a notebook of the same name
-without colliding, and neither can see or delete the other's.
+**Each account gets its own workspace.** Registering creates a directory under
+`storage/users/<name>/`, holding its own `notebook.db`, `vectors.db` and
+`sources/`. Two people can own a notebook of the same name without colliding,
+and neither can see or delete the other's. Accounts themselves live in
+`accounts.db` at the storage root: scrypt password hashes, and sessions stored
+as a hash of the token so the database holds nothing usable.
 
 Isolation is by **directory, not by an owner column**, which is both simpler and
 stronger: there is no query that could forget a `WHERE` clause and return
@@ -104,9 +114,13 @@ and everyone shares yours, so it is roughly one question a minute *for the whole
 deployment*, not per person. Raise the Groq tier before inviting anyone. Uploads
 are fine — they queue properly and report each waiter's position.
 
-Running it locally needs none of this: the default bind is loopback, and with
-`NOTEBOOK_AUTH` unset there is no gate and no `users/` directory — storage stays
-exactly where it was.
+If you used this before accounts existed, your notebooks are at the storage
+root where no account can see them. One command moves them, with the server
+stopped:
+
+```bash
+npm run notebook -- adopt <your-account-name>
+```
 
 The CLI works on the same data:
 
