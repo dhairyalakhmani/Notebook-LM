@@ -1,11 +1,9 @@
 import * as config from "../config.ts";
 import { HfApiEmbedder } from "./hfApiEmbedder.ts";
-import { LocalEmbedder } from "./localEmbedder.ts";
 import type { Embedder } from "./base.ts";
 
 export type { Embedder } from "./base.ts";
 export { HfApiEmbedder } from "./hfApiEmbedder.ts";
-export { LocalEmbedder } from "./localEmbedder.ts";
 export { EmbeddingCache } from "./cache.ts";
 export { QUERY_PREFIX, isEmbeddable, isUnitLength, normalize } from "./shared.ts";
 export { checkBudget, findOversized, estimateModelTokens } from "./limits.ts";
@@ -27,8 +25,14 @@ function create(): Promise<Embedder> {
           "in-process, not the HuggingFace API. Vectors from the two paths are not " +
           'comparable; set it back to "hf-api" before ingesting anything you intend to keep.',
       );
-      return LocalEmbedder.create();
+      return loadLocalEmbedder();
   }
+}
+
+// Imported lazily so "hf-api" mode never loads @huggingface/transformers.
+async function loadLocalEmbedder(): Promise<Embedder> {
+  const { LocalEmbedder } = await import("./localEmbedder.ts");
+  return LocalEmbedder.create();
 }
 
 export function resetEmbedder(): void {

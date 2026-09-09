@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=24.0.0"
+  },
   "description": "NoteBook: ask questions of your own documents and get answers quoted from them, with the page they came from.",
   "workspaces": [
     "web"
@@ -30,7 +33,6 @@
     "check": "npm run format:check && npm run lint && npm run typecheck && npm run test && npm run check:deps"
   },
   "dependencies": {
-    "@huggingface/transformers": "^4.2.0",
     "cheerio": "^1.2.0",
     "commander": "^15.0.0",
     "dotenv": "^17.4.2",
@@ -38,6 +40,9 @@
     "mammoth": "^1.12.2",
     "openai": "^7.5.0",
     "pdfjs-dist": "6.2.108"
+  },
+  "optionalDependencies": {
+    "@huggingface/transformers": "^4.2.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",

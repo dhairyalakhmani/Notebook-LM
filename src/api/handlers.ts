@@ -143,6 +143,13 @@ export function registerReadRoutes(): void {
   });
 }
 
+// Hands freed pages back to the filesystem. Skipped unless a delete actually
+// reclaimed something, since VACUUM rewrites the whole database.
+function reclaim(what: string): void {
+  const freed = notebookStore().compact() + vectors().compact();
+  if (freed > 0) console.log(`reclaimed ${(freed / 1_000_000).toFixed(1)} MB after ${what}`);
+}
+
 export function registerWriteRoutes(): void {
   route("POST", "/api/notebooks", ({ request }): Promise<NotebookSummaryDto> =>
     (async () => {
@@ -318,6 +325,7 @@ export function registerWriteRoutes(): void {
       }
 
       invalidateNotebook(notebook);
+      if (chunksRemoved) reclaim(`source ${id}`);
       return { removed, chunksRemoved, fileRemoved };
     },
   );
@@ -346,6 +354,7 @@ export function registerWriteRoutes(): void {
     }
 
     invalidateNotebook(notebook);
+    reclaim(`notebook ${notebook}`);
     return { removed: true, sourcesReleased: documentIds.length, messagesRemoved };
   });
 

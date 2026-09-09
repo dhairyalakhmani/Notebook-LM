@@ -1,6 +1,5 @@
 import * as config from "../config.ts";
 import { getEmbedder } from "../embedding/index.ts";
-import { getReranker } from "./reranker.ts";
 import { NotebookStore } from "../notebook/store.ts";
 import { hybridSearch } from "../search/hybrid.ts";
 import { KeywordIndex } from "../search/keywordIndex.ts";
@@ -8,6 +7,12 @@ import { VectorStore } from "../search/vectorStore.ts";
 import type { Embedder } from "../embedding/base.ts";
 import type { BlockKind, Chunk } from "../models.ts";
 import type { Candidate } from "../search/hybrid.ts";
+
+// Imported lazily: it pulls in onnxruntime, which is ~600 MB and unused here.
+async function loadReranker(): Promise<Reranker> {
+  const { getReranker } = await import("./reranker.ts");
+  return getReranker();
+}
 
 export interface Passage {
   chunkId: string;
@@ -83,7 +88,7 @@ export class Retriever {
       parts.vectorStore ?? new VectorStore(),
       parts.embedder ?? (await getEmbedder()),
       KeywordIndex.forNotebook(notebook, store),
-      parts.reranker ?? (config.USE_RERANKER ? await getReranker() : null),
+      parts.reranker ?? (config.USE_RERANKER ? await loadReranker() : null),
     );
   }
 

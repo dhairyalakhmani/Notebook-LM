@@ -1,4 +1,4 @@
-import { mkdirSync } from "node:fs";
+import { mkdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import type { SQLOutputValue } from "node:sqlite";
@@ -45,6 +45,7 @@ function fromBlob(blob: Uint8Array<ArrayBuffer>): Float32Array {
 
 export class VectorStore {
   private db: DatabaseSync;
+  private readonly path: string;
   private cache = new Map<
     string,
     { ids: string[]; documentIds: string[]; vectors: Float32Array[] }
@@ -52,7 +53,8 @@ export class VectorStore {
 
   constructor(storageDir: string = config.STORAGE_DIR) {
     mkdirSync(storageDir, { recursive: true });
-    this.db = new DatabaseSync(join(storageDir, DB_FILENAME));
+    this.path = join(storageDir, DB_FILENAME);
+    this.db = new DatabaseSync(this.path);
     // WAL so the API server can read while a forked ingest writes.
     this.db.exec("PRAGMA journal_mode = WAL");
     this.db.exec("PRAGMA busy_timeout = 5000");
@@ -208,6 +210,39 @@ export class VectorStore {
   count(): number {
     const row = this.db.prepare("SELECT COUNT(*) AS n FROM vectors").get() as { n: number };
     return row.n;
+  }
+
+  // Every file this database occupies. In WAL mode most of a recent write
+  // lives in the -wal companion, not the main file, so measuring the main
+  // file alone reports nonsense - it can be 4 KB while -wal holds megabytes.
+  private footprint(): number {
+    let total = 0;
+    for (const suffix of ["", "-wal", "-shm"]) {
+      try {
+        total += statSync(this.path + suffix).size;
+      } catch {
+        // Absent: WAL companions only exist between checkpoints.
+      }
+    }
+    return total;
+  }
+
+  // Deleting rows marks pages free for reuse; it does not return them to the
+  // filesystem. Without this a notebook you deleted still occupies its space
+  // on the volume for ever. Returns the bytes actually handed back.
+  compact(): number {
+    const before = this.footprint();
+    try {
+      // Fold the WAL into the main file and truncate it, so VACUUM sees the
+      // real contents and the -wal file stops holding space of its own.
+      this.db.exec("PRAGMA wal_checkpoint(TRUNCATE)");
+      this.db.exec("VACUUM");
+      this.db.exec("PRAGMA wal_checkpoint(TRUNCATE)");
+    } catch {
+      // Another connection is mid-write; the next delete will try again.
+      return 0;
+    }
+    return Math.max(0, before - this.footprint());
   }
 
   close(): void {

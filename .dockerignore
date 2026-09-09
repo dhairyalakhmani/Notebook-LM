@@ -1,0 +1,29 @@
+# Secrets never enter the build context. Even though the runtime stage does not
+# copy it, a .env pulled into the build stage is a layer in the image.
+.env
+.env.*
+!.env.example
+
+node_modules
+web/node_modules
+web/dist
+.vite
+coverage
+
+# Notebooks and sources belong on a mounted volume, not baked into the image.
+storage
+storage-sandbox
+data
+
+.git
+.github
+.gitignore
+.gitattributes
+.prettierignore
+.prettierrc.json
+eslint.config.js
+Dockerfile
+.dockerignore
+README.md
+Questions.md
+LICENSE

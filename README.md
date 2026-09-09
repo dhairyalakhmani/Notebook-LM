@@ -37,16 +37,63 @@ npm run build && npm run ui   # http://127.0.0.1:8787 serves both
 
 ### Deploying it
 
-Not yet, and the reason is worth stating plainly: this process holds your Groq
-and HuggingFace keys, binds `127.0.0.1`, and has **no authentication of any
-kind**. Anyone who can reach the port can read every document you have ingested
-and spend your API quota. It is built to run on the machine you are sitting at.
+There are no user accounts, so access is a shared-secret gate rather than an
+identity model. `NOTEBOOK_AUTH` holds `name:password` pairs, comma-separated,
+and the server **refuses to start** if you bind anything but loopback without
+it — you cannot expose this unauthenticated by accident.
 
-Putting it on the internet needs three things it does not have: an identity
-model (every route is currently "whoever asked"), per-user storage (one SQLite
-file and one `storage/sources` directory are shared by all callers), and a
-queue in front of ingest, which today runs one forked job per process. Behind a
-private network or a personal VPN, none of that is needed.
+```bash
+NOTEBOOK_AUTH="you:a-long-password,friend:another"   node src/api/server.ts --static web/dist --host 0.0.0.0
+```
+
+The gate covers the app shell as well as the API, so an unauthorised visitor
+never loads the page. `GET /api/health` is exempt, for platform health checks;
+it reveals the model name and embedding dimensions and nothing about any
+document.
+
+**On Railway** (a container, a volume, and a free HTTPS hostname):
+
+1. New project → deploy from the GitHub repo; the `Dockerfile` is picked up.
+2. Add a **volume mounted at `/data`**. Without it every notebook disappears
+   on the next deploy.
+3. Set `GROQ_API_KEY`, `HF_TOKEN` and `NOTEBOOK_AUTH`. Paste the values
+   **without quotes**: `.env` may wrap a token in `"..."` because dotenv strips
+   those when reading a file, but a platform variable is taken literally, and a
+   quoted token fails as `HuggingFace API 401` at the embed stage.
+4. **Keep replicas at 1.** SQLite is one local file with a single writer; two
+   replicas would get two volumes and silently diverge.
+
+`PORT` is injected by the platform and read by the container's command, which
+binds `0.0.0.0` and sets `NOTEBOOK_STORAGE_DIR=/data`. The image prunes
+`@huggingface/transformers` and its two onnxruntime builds — about 600 MB,
+needed only for local embedding or the reranker, both lazily imported. It keeps
+pdfjs-dist's optional `@napi-rs/canvas`, without which PDF text extraction
+crashes on import.
+
+**Deleting really frees the volume.** Removing a source deletes its chunks, its
+vectors and — when no other notebook still references those bytes — the stored
+original. Then both databases are compacted, because SQLite marks freed pages
+for reuse rather than returning them: without that step a deleted notebook
+occupies its space for ever. The WAL companions are folded in and truncated at
+the same time, which is a larger saving than it sounds; the server logs what it
+handed back.
+
+The one thing that only grows is `embeddings.db`, the content-hash embedding
+cache. It is never pruned, deliberately — it is what makes re-ingesting a
+document free. It is also pure cache: delete the file and it rebuilds, at the
+cost of re-embedding.
+
+Two things to understand before you add people:
+
+- **One shared workspace.** Everybody who can log in sees every notebook and
+  can delete anyone's sources. There is no ownership anywhere in the schema.
+- **One shared quota.** 8000 tokens/minute is per API key, so it is roughly one
+  question a minute *for the whole deployment*, not per person. Raise the Groq
+  tier before inviting anyone. Uploads, by contrast, queue properly and report
+  their position.
+
+Running it locally needs none of this: the default bind is loopback, and with
+`NOTEBOOK_AUTH` unset there is no gate.
 
 The CLI works on the same data:
 
