@@ -3,19 +3,6 @@ import { splitSentences } from "./sentences.ts";
 import type { BoundaryReason } from "../models.ts";
 import type { TokenCounter } from "../tokenizer.ts";
 
-/**
- * Layer 3 - size constraints.
- *
- * Semantic boundaries come first; this only runs when a unit is genuinely too
- * large for the budget. It walks a ladder of separators and stops at the first
- * one that fits, so the least damaging cut is always preferred:
- *
- *   blocks  ->  paragraphs  ->  sentences  ->  clauses  ->  tokens
- *
- * Only the last rung ignores meaning, and it reports itself as "token" so a bad
- * chunk can always be traced back to the fact that nothing better was available.
- */
-
 export interface Piece {
   text: string;
   tokenCount: number;
@@ -24,12 +11,10 @@ export interface Piece {
 
 export interface SplitOptions {
   maxTokens: number;
-  /** Tokens of the previous piece repeated at the start of the next one. */
   overlapTokens?: number;
   counter?: TokenCounter;
 }
 
-/** Greedily packs parts into pieces that fit the budget, never splitting a part. */
 function pack(
   parts: string[],
   maxTokens: number,
@@ -43,8 +28,6 @@ function pack(
   for (const part of parts) {
     const size = counter.count(part);
     if (size > maxTokens) {
-      // This single part busts the budget on its own. Emit what we have, then
-      // hand the part back so the caller can try a finer separator on it.
       if (current.length > 0) {
         pieces.push({ text: current.join(joiner), oversized: false });
         current = [];
@@ -65,7 +48,6 @@ function pack(
   return pieces;
 }
 
-/** Fixed token windows. The safety net, used only when nothing else fits. */
 function byTokens(text: string, maxTokens: number, counter: TokenCounter): string[] {
   const tokens = counter.encode(text);
   if (tokens.length <= maxTokens) return [text];
@@ -76,15 +58,7 @@ function byTokens(text: string, maxTokens: number, counter: TokenCounter): strin
   return out.filter(Boolean);
 }
 
-/**
- * Splits one over-budget text, descending the separator ladder only as far as
- * it has to. `parts` is the caller's preferred top rung - usually the blocks the
- * unit was built from, so block boundaries are respected before anything else.
- */
-export function splitToSize(
-  parts: string[],
-  options: SplitOptions,
-): Piece[] {
+export function splitToSize(parts: string[], options: SplitOptions): Piece[] {
   const counter = options.counter ?? new TiktokenCounter();
   const overlapTokens = options.overlapTokens ?? 0;
 
@@ -94,17 +68,11 @@ export function splitToSize(
     reason,
   });
 
-  // Does it all fit as one piece? Then there is no boundary to overlap across,
-  // and no reason to spend budget reserving room for one. Checking this first
-  // stops a unit between (max - overlap) and max from being split needlessly.
   const whole = pack(parts, options.maxTokens, counter, "\n");
   if (whole.length === 1 && !whole[0]!.oversized) {
     return [emit(whole[0]!.text, "structural")];
   }
 
-  // It will be split, so overlap will be prepended to every piece after the
-  // first. Reserve its room up front, or `maxTokens` is not a ceiling at all -
-  // pieces come out at maxTokens + overlapTokens.
   const maxTokens = Math.max(overlapTokens + 1, options.maxTokens - overlapTokens);
 
   const out: Piece[] = [];
@@ -118,8 +86,7 @@ export function splitToSize(
 
     // Rung 2: paragraphs inside the oversized part.
     const paragraphs = packed.text.split(/\n{2,}/).filter((p) => p.trim());
-    const byParagraph =
-      paragraphs.length > 1 ? pack(paragraphs, maxTokens, counter, "\n\n") : null;
+    const byParagraph = paragraphs.length > 1 ? pack(paragraphs, maxTokens, counter, "\n\n") : null;
     if (byParagraph && byParagraph.every((p) => !p.oversized)) {
       for (const p of byParagraph) out.push(emit(p.text, "paragraph"));
       continue;
@@ -140,8 +107,7 @@ export function splitToSize(
           continue;
         }
         const clauses = p.text.split(/(?<=[;:])\s+/).filter(Boolean);
-        const byClause =
-          clauses.length > 1 ? pack(clauses, maxTokens, counter, " ") : null;
+        const byClause = clauses.length > 1 ? pack(clauses, maxTokens, counter, " ") : null;
         if (byClause && byClause.every((c) => !c.oversized)) {
           for (const c of byClause) out.push(emit(c.text, "sentence"));
           continue;
@@ -159,11 +125,6 @@ export function splitToSize(
   return withOverlap(out, overlapTokens, counter);
 }
 
-/**
- * Repeats the tail of each piece at the head of the next, so a fact sitting on
- * a boundary is findable from either side. Applied at the end, on whatever the
- * ladder produced.
- */
 function withOverlap(pieces: Piece[], overlapTokens: number, counter: TokenCounter): Piece[] {
   if (overlapTokens <= 0 || pieces.length < 2) return pieces;
   return pieces.map((piece, index) => {

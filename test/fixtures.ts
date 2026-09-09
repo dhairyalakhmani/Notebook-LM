@@ -2,16 +2,6 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-/**
- * A minimal ZIP writer, so a real .docx can be built in a test without adding a
- * dependency for it.
- *
- * Entries are *stored*, never deflated - a ZIP reader accepts that, and it
- * removes the only part that would need a compression library. Paths use forward
- * slashes, which is what OOXML readers require and what Windows'
- * `Compress-Archive` gets wrong.
- */
-
 const CRC_TABLE = (() => {
   const table = new Uint32Array(256);
   for (let i = 0; i < 256; i++) {
@@ -84,17 +74,11 @@ const CONTENT_TYPES = `<?xml version="1.0"?><Types xmlns="http://schemas.openxml
 
 const RELS = `<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>`;
 
-/** One Word paragraph. `style` is a style id such as "Heading1"; null for body. */
 export interface Paragraph {
   style: string | null;
   text: string;
 }
 
-/**
- * Writes a real .docx carrying genuine Word heading styles, and returns its
- * path. This is what makes the DOCX test meaningful: mammoth has to map
- * "Heading1" to `<h1>` for the loader to produce explicit heading levels.
- */
 export function writeDocx(paragraphs: Paragraph[], name = "fixture.docx"): string {
   const body = paragraphs
     .map(
@@ -119,7 +103,6 @@ export function writeDocx(paragraphs: Paragraph[], name = "fixture.docx"): strin
   return path;
 }
 
-/** Writes an .html file and returns its path. */
 export function writeHtml(html: string, name = "fixture.html"): string {
   const path = join(mkdtempSync(join(tmpdir(), "nblm-")), name);
   writeFileSync(path, html, "utf8");

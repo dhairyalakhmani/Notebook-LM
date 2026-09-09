@@ -5,7 +5,6 @@ import * as config from "../src/config.ts";
 import { pdfPages } from "./helpers.ts";
 import type { LineSpec } from "./helpers.ts";
 
-/** A section long enough to force real parent/child fan-out. */
 function longSection(heading: string, sentences: number): LineSpec[] {
   const lines: LineSpec[] = [{ text: heading, fontSize: 15, isBold: true }];
   for (let i = 0; i < sentences; i++) {
@@ -18,10 +17,7 @@ function longSection(heading: string, sentences: number): LineSpec[] {
 
 describe("parent/child hierarchy", () => {
   it("fans out - a large unit yields several children per parent", async () => {
-    const { parents, children } = await chunkDocument(
-      pdfPages(longSection("Billing", 60)),
-      "doc",
-    );
+    const { parents, children } = await chunkDocument(pdfPages(longSection("Billing", 60)), "doc");
     assert.ok(parents.length >= 1);
     assert.ok(
       children.length > parents.length,
@@ -30,20 +26,14 @@ describe("parent/child hierarchy", () => {
   });
 
   it("keeps parents larger than children", async () => {
-    const { parents, children } = await chunkDocument(
-      pdfPages(longSection("Billing", 60)),
-      "doc",
-    );
+    const { parents, children } = await chunkDocument(pdfPages(longSection("Billing", 60)), "doc");
     const avg = (list: { tokenCount: number }[]): number =>
       list.reduce((sum, c) => sum + c.tokenCount, 0) / list.length;
     assert.ok(avg(parents) > avg(children), "parents must carry more context than children");
   });
 
   it("respects both token budgets", async () => {
-    const { parents, children } = await chunkDocument(
-      pdfPages(longSection("Billing", 80)),
-      "doc",
-    );
+    const { parents, children } = await chunkDocument(pdfPages(longSection("Billing", 80)), "doc");
     for (const parent of parents) {
       assert.ok(
         parent.tokenCount <= config.PARENT_MAX_TOKENS,
@@ -60,10 +50,7 @@ describe("parent/child hierarchy", () => {
   });
 
   it("every child points at a real parent", async () => {
-    const { parents, children } = await chunkDocument(
-      pdfPages(longSection("Billing", 60)),
-      "doc",
-    );
+    const { parents, children } = await chunkDocument(pdfPages(longSection("Billing", 60)), "doc");
     const ids = new Set(parents.map((p) => p.chunkId));
     for (const child of children) {
       assert.ok(child.parentId && ids.has(child.parentId), "orphan child chunk");

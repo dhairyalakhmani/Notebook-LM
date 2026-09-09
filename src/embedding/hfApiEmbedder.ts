@@ -1,29 +1,8 @@
-import "dotenv/config";
 import * as config from "../config.ts";
 import { EmbeddingCache } from "./cache.ts";
 import { QUERY_PREFIX, isEmbeddable, isUnitLength, normalize } from "./shared.ts";
 import type { Embedder } from "./base.ts";
 
-/**
- * Embeddings from the hosted HuggingFace Inference API.
- *
- * The API call itself is one POST. Everything else in this file exists because a
- * network sits between us and the model, which introduces four failure modes
- * that in-process inference simply does not have:
- *
- *  - **The endpoint is cold.** A model that has not been used recently returns
- *    503 while it loads. `wait_for_model` asks it to block instead, and retries
- *    cover the rest.
- *  - **Rate limits.** A 300-page PDF is thousands of chunks. 429 is expected,
- *    not exceptional, so backoff is mandatory rather than defensive.
- *  - **Partial failure.** A request can fail after minutes of successful work.
- *    The cache means a retry does not re-pay for what already succeeded.
- *  - **The response shape is not guaranteed.** See `toVectors` - this is the
- *    part most likely to bite, because getting it wrong produces plausible
- *    numbers rather than an error.
- */
-
-/** Statuses worth trying again. 429 is rate limiting, 503 is a cold model. */
 const RETRYABLE = new Set([408, 425, 429, 500, 502, 503, 504]);
 
 interface HfRequest {
@@ -35,7 +14,6 @@ export interface HfApiEmbedderOptions {
   modelId?: string;
   token?: string;
   cache?: EmbeddingCache | null;
-  /** Injectable for tests, so the suite never touches the network. */
   fetchImpl?: typeof fetch;
 }
 
@@ -48,7 +26,6 @@ export class HfApiEmbedder implements Embedder {
   private url: string;
   private cache: EmbeddingCache | null;
   private fetchImpl: typeof fetch;
-  /** Warn once, not once per batch. */
   private warnedUnnormalised = false;
 
   constructor(options: HfApiEmbedderOptions = {}) {
@@ -56,7 +33,7 @@ export class HfApiEmbedder implements Embedder {
     if (!token) {
       throw new Error(
         "HF_TOKEN not found. Add it to a .env file in the project root, or set " +
-          "EMBEDDING_PROVIDER = \"local\" in src/config.ts to embed offline.",
+          'EMBEDDING_PROVIDER = "local" in src/config.ts to embed offline.',
       );
     }
     this.token = token;
@@ -71,14 +48,6 @@ export class HfApiEmbedder implements Embedder {
     this.fetchImpl = options.fetchImpl ?? fetch;
   }
 
-  /**
-   * One request, with retries.
-   *
-   * Retryable failures back off exponentially with jitter; `Retry-After` is
-   * honoured when the server sends it. Authentication and "no such model"
-   * failures are fatal and reported immediately, because retrying them just
-   * wastes a minute before showing the same message.
-   */
   private async post(inputs: string[]): Promise<unknown> {
     const body: HfRequest = { inputs, options: { wait_for_model: true } };
     let lastError: unknown;
@@ -101,9 +70,7 @@ export class HfApiEmbedder implements Embedder {
 
         const detail = (await response.text().catch(() => "")).slice(0, 200);
         if (!RETRYABLE.has(response.status)) {
-          throw new Error(
-            `HuggingFace API ${response.status} for ${this.modelId}: ${detail}`,
-          );
+          throw new Error(`HuggingFace API ${response.status} for ${this.modelId}: ${detail}`);
         }
         lastError = new Error(`HuggingFace API ${response.status}: ${detail}`);
         await this.wait(attempt, response.headers.get("retry-after"));
@@ -126,28 +93,11 @@ export class HfApiEmbedder implements Embedder {
 
   private async wait(attempt: number, retryAfter: string | null): Promise<void> {
     const advised = retryAfter ? Number(retryAfter) * 1000 : Number.NaN;
-    // Jitter matters: without it, a burst of parallel requests all retry in
-    // lockstep and trip the rate limit again together.
     const backoff = config.HF_BACKOFF_MS * 2 ** (attempt - 1) * (0.5 + Math.random());
     const delay = Number.isFinite(advised) ? Math.max(advised, backoff) : backoff;
     await new Promise((resolve) => setTimeout(resolve, delay));
   }
 
-  /**
-   * Turns whatever the API returned into one unit vector per input.
-   *
-   * The shape genuinely varies. A sentence-transformers model usually returns
-   * one pooled vector per input, but the same endpoint can return the full token
-   * matrix instead, and a single input may or may not be wrapped in an array. So
-   * the nesting depth is measured rather than assumed:
-   *
-   *   number[]       one vector
-   *   number[][]     a batch of vectors, OR one input's token matrix
-   *   number[][][]   a batch of token matrices
-   *
-   * Where a token matrix appears, row 0 is the [CLS] token - which is the
-   * pooling bge is built for, and what the local path uses.
-   */
   private toVectors(payload: unknown, expected: number): number[][] {
     const fail = (why: string): never => {
       throw new Error(
@@ -188,9 +138,6 @@ export class HfApiEmbedder implements Embedder {
       }
     }
 
-    // The API makes no promise about normalisation, and the vector store's dot
-    // product is only a cosine for unit vectors. Normalise regardless, and say
-    // so once, because it is a useful thing to know about your endpoint.
     if (!this.warnedUnnormalised && rows[0] && !isUnitLength(rows[0])) {
       console.log("  note: API returned unnormalised vectors - normalising locally");
       this.warnedUnnormalised = true;
@@ -198,7 +145,6 @@ export class HfApiEmbedder implements Embedder {
     return rows.map(normalize);
   }
 
-  /** Splits texts into batches bounded by both count and payload bytes. */
   private batches(texts: string[]): number[][] {
     const batches: number[][] = [];
     let current: number[] = [];
@@ -245,8 +191,6 @@ export class HfApiEmbedder implements Embedder {
       batch.map((offset) => pending[offset]!),
     );
 
-    // Bounded concurrency: several requests in flight for throughput, few enough
-    // that the endpoint does not start refusing them.
     let next = 0;
     const fresh: { text: string; vector: number[] }[] = [];
     const workers = Array.from(

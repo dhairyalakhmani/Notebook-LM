@@ -14,35 +14,24 @@ import type { Chunk, Document } from "../src/models.ts";
 const NOTEBOOK = "test-notebook";
 const DOCUMENT_ID = "doc1";
 
-/**
- * Three dimensions, not 384. The store only requires the query and the stored
- * vectors to agree with each other, so tiny vectors let every cosine in these
- * tests be worked out by hand instead of taken on trust.
- *
- * Dimension 0 is "payments", dimension 1 is "identifiers".
- */
 const VECTORS: Record<string, number[]> = {
   // the four child chunks
   "c1: Failed charges are retried three times over seventy-two hours.": [1, 0, 0],
   "c2: A declined payment is attempted again for three days.": normalize([0.9, 0.1, 0]),
   "c3: Retry backoff doubles between each attempt.": normalize([0.8, 0.2, 0]),
-  "c4: The customer_id column is the primary key of the Customer table.":
-    normalize([0.1, 1, 0]),
+  "c4: The customer_id column is the primary key of the Customer table.": normalize([0.1, 1, 0]),
+
+  "s1: Retries for failed charges run three times.": [1, 0, 0],
 
   // questions
   "how are failed charges retried?": [1, 0, 0],
-  // Deliberately the payments vector: the whole point is that the embedder has
-  // no idea what `customer_id` means, so the dense search cannot help here.
   customer_id: [1, 0, 0],
 };
 
-/** Looks its answers up, and throws on anything it was not given - a typo in a
- *  test should fail loudly, not quietly return a default vector. */
 class StubEmbedder implements Embedder {
   readonly modelId = "stub/test-embedder";
   readonly dimensions = 3;
   readonly maxInputTokens = 512;
-  /** Every text this was asked to embed, so a test can prove it was *not* called. */
   readonly calls: string[] = [];
 
   private lookup(text: string): number[] {
@@ -80,11 +69,11 @@ function chunk(overrides: Partial<Chunk> & Pick<Chunk, "chunkId">): Chunk {
   };
 }
 
-/**
- * One document, two parents, four children: three of the children belong to the
- * payments parent, which is what makes deduplication observable.
- */
-async function fixture(): Promise<{ store: NotebookStore; vectorStore: VectorStore; embedder: StubEmbedder }> {
+async function fixture(): Promise<{
+  store: NotebookStore;
+  vectorStore: VectorStore;
+  embedder: StubEmbedder;
+}> {
   const directory = mkdtempSync(join(tmpdir(), "retrieval-"));
   const store = new NotebookStore(directory);
   const vectorStore = new VectorStore(directory);
@@ -102,8 +91,9 @@ async function fixture(): Promise<{ store: NotebookStore; vectorStore: VectorSto
   const parents = [
     chunk({
       chunkId: "p1",
-      text: "PAYMENTS. Failed charges are retried three times over seventy-two hours. "
-        + "Retry backoff doubles between each attempt.",
+      text:
+        "PAYMENTS. Failed charges are retried three times over seventy-two hours. " +
+        "Retry backoff doubles between each attempt.",
       pageStart: 1,
       pageEnd: 2,
       headingPath: ["2. BILLING DOMAIN", "Payments"],
@@ -215,7 +205,15 @@ describe("reciprocal rank fusion", () => {
   });
 
   it("respects topN", () => {
-    const fused = fuseRankings([["a", 1], ["b", 1], ["c", 1]], [], { topN: 2 });
+    const fused = fuseRankings(
+      [
+        ["a", 1],
+        ["b", 1],
+        ["c", 1],
+      ],
+      [],
+      { topN: 2 },
+    );
     assert.equal(fused.length, 2);
   });
 });
@@ -256,9 +254,6 @@ describe("Retriever", () => {
     const parts = await fixture();
     const retriever = await Retriever.create(NOTEBOOK, parts);
 
-    // `customer_id` embeds to the payments vector here, so the dense search ranks
-    // the three payments chunks above it. Capped at three candidates, dense alone
-    // would never surface c4 at all - only BM25 puts it in the list.
     const passages = await retriever.retrieve("customer_id", { k: 3 });
 
     assert.ok(
@@ -298,12 +293,6 @@ describe("formatPages", () => {
 });
 
 describe("a document shared by two notebooks", () => {
-  /**
-   * Regression test. Chunk and document ids are derived from the file's content
-   * hash, so the same PDF added twice shares them. With `document_id` alone as
-   * the primary key, adding it to a second notebook silently MOVED it out of the
-   * first, and removing it from either deleted the chunks from both.
-   */
   it("stays in the first notebook when added to a second", async () => {
     const { store, vectorStore, embedder } = await fixture();
     const second = "other-notebook";
@@ -348,5 +337,101 @@ describe("a document shared by two notebooks", () => {
     assert.equal(removed, true);
     assert.equal(chunksRemoved, true, "nothing else references it, so reclaim the space");
     assert.equal(store.childChunks(NOTEBOOK).length, 0);
+  });
+});
+
+describe("restricting a search to some of a notebook's sources", () => {
+  const SECOND_ID = "doc2";
+
+  async function twoDocuments() {
+    const parts = await fixture();
+    const { store, vectorStore, embedder } = parts;
+
+    store.addDocument(NOTEBOOK, {
+      documentId: SECOND_ID,
+      title: "Support Runbook",
+      filename: "Support Runbook.pdf",
+      sourceType: "pdf",
+      pageCount: 1,
+      addedAt: new Date().toISOString(),
+    });
+
+    const parent = chunk({
+      chunkId: "s-p1",
+      documentId: SECOND_ID,
+      text: "SUPPORT. Retries for failed charges run three times.",
+      sectionTitle: "Support",
+    });
+    const child = chunk({
+      chunkId: "s-c1",
+      documentId: SECOND_ID,
+      parentId: "s-p1",
+      text: "s1: Retries for failed charges run three times.",
+    });
+    store.addChunks([parent, child]);
+    const vectors = await embedder.embedDocuments([child.text]);
+    vectorStore.add(NOTEBOOK, [child], vectors, embedder.modelId);
+
+    return parts;
+  }
+
+  const QUESTION = "how are failed charges retried?";
+
+  it("searches every source when no scope is given", async () => {
+    const { store, vectorStore, embedder } = await twoDocuments();
+    const retriever = await Retriever.create(NOTEBOOK, { store, vectorStore, embedder });
+    const documents = new Set(
+      (await retriever.retrieve(QUESTION)).map((passage) => passage.documentId),
+    );
+    assert.ok(documents.has(DOCUMENT_ID));
+    assert.ok(documents.has(SECOND_ID), "the second source must be reachable unscoped");
+  });
+
+  it("returns nothing from a source that was scoped out", async () => {
+    const { store, vectorStore, embedder } = await twoDocuments();
+    const retriever = await Retriever.create(NOTEBOOK, { store, vectorStore, embedder });
+    const passages = await retriever.retrieve(QUESTION, { documentIds: [DOCUMENT_ID] });
+
+    assert.ok(passages.length > 0);
+    for (const passage of passages) {
+      assert.equal(passage.documentId, DOCUMENT_ID, "a scoped-out document leaked through");
+    }
+  });
+
+  it("scopes the sparse half too, not only the vectors", async () => {
+    const { store, vectorStore, embedder } = await twoDocuments();
+    const retriever = await Retriever.create(NOTEBOOK, { store, vectorStore, embedder });
+    const passages = await retriever.retrieve("customer_id", { documentIds: [SECOND_ID] });
+
+    for (const passage of passages) {
+      assert.equal(passage.documentId, SECOND_ID, "BM25 ignored the scope");
+    }
+  });
+
+  it("treats an empty list as no restriction, not as nothing", async () => {
+    const { store, vectorStore, embedder } = await twoDocuments();
+    const retriever = await Retriever.create(NOTEBOOK, { store, vectorStore, embedder });
+    const passages = await retriever.retrieve(QUESTION, { documentIds: [] });
+    assert.ok(passages.length > 0);
+  });
+
+  it("returns nothing when scoped to a document the notebook does not hold", async () => {
+    const { store, vectorStore, embedder } = await twoDocuments();
+    const retriever = await Retriever.create(NOTEBOOK, { store, vectorStore, embedder });
+    const passages = await retriever.retrieve(QUESTION, { documentIds: ["not-a-document"] });
+    assert.deepEqual(passages, [], "an unknown scope must not fall back to everything");
+  });
+
+  it("fills k from the scoped sources rather than from a global top-k", async () => {
+    const { store, vectorStore, embedder } = await twoDocuments();
+    const retriever = await Retriever.create(NOTEBOOK, { store, vectorStore, embedder });
+    const scoped = await retriever.retrieve(QUESTION, { documentIds: [DOCUMENT_ID] });
+    const unscoped = await retriever.retrieve(QUESTION);
+
+    const fromDoc1 = unscoped.filter((passage) => passage.documentId === DOCUMENT_ID);
+    assert.ok(
+      scoped.length >= fromDoc1.length,
+      "scoping must not return fewer passages than the same source got unscoped",
+    );
   });
 });

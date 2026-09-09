@@ -1,0 +1,160 @@
+:root {
+  --sunk: #e2e5eb;
+  --ground: #edeff3;
+  --surface: #ffffff;
+  --surface-2: #f5f7f9;
+  --surface-3: #ebeef2;
+
+  --ink: #131722;
+  --ink-soft: #57606f;
+  --ink-faint: #616b80;
+
+  --line: #d5dae2;
+  --line-soft: #e4e8ee;
+  --edge-hi: rgba(255, 255, 255, 0.9);
+  --edge-shadow: rgba(17, 22, 33, 0.08);
+
+  --accent: #1d3f7a;
+  --accent-ink: #ffffff;
+  --accent-soft: #e4eaf3;
+  --accent-line: #b3c2da;
+
+  --cite-bg: #e6eaef;
+  --cite-bg-hover: #d2d8e2;
+  --cite-line: #a7b0bf;
+  --cite-ink: #2b3444;
+  --cite-current-bg: #1d3f7a;
+  --cite-current-ink: #ffffff;
+
+  --mark: rgba(29, 63, 122, 0.22);
+  --select: rgba(29, 63, 122, 0.28);
+  --paper: #ffffff;
+  --paper-ink: #131722;
+
+  --warn: #7a4e00;
+  --warn-soft: #fbf1dc;
+  --warn-line: #e0c48a;
+  --danger: #8c2f26;
+  --danger-soft: #fbedeb;
+  --danger-line: #e2b4ae;
+
+  --thumb: rgba(88, 99, 118, 0.32);
+  --thumb-hover: rgba(88, 99, 118, 0.58);
+
+  --font-ui: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-doc: "Newsreader", Georgia, "Times New Roman", serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  --text-label: 11px;
+  --text-sm: 12px;
+  --text-ui: 13px;
+  --text-lg: 15px;
+  --text-doc: 17px;
+  --text-title: 19px;
+
+  --s1: 4px;
+  --s2: 8px;
+  --s3: 12px;
+  --s4: 16px;
+  --s5: 20px;
+  --s6: 24px;
+  --s8: 32px;
+  --s10: 40px;
+
+  --radius-1: 4px;
+  --radius-2: 6px;
+  --radius-3: 10px;
+  --radius-pill: 999px;
+
+  --hit: 32px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --sunk: #070a0e;
+    --ground: #0d1016;
+    --surface: #151a23;
+    --surface-2: #1b212b;
+    --surface-3: #222937;
+
+    --ink: #e6eaf1;
+    --ink-soft: #98a2b3;
+    --ink-faint: #8a94a6;
+
+    --line: #262d3a;
+    --line-soft: #1e2530;
+    --edge-hi: rgba(255, 255, 255, 0.05);
+    --edge-shadow: rgba(0, 0, 0, 0.55);
+
+    --accent: #90b1ee;
+    --accent-ink: #0d1016;
+    --accent-soft: #1a2333;
+    --accent-line: #2e3c55;
+
+    --cite-bg: #262e3b;
+    --cite-bg-hover: #35404f;
+    --cite-line: #4b5567;
+    --cite-ink: #d2d9e3;
+    --cite-current-bg: #90b1ee;
+    --cite-current-ink: #0d1016;
+
+    --mark: rgba(144, 177, 238, 0.28);
+    --select: rgba(144, 177, 238, 0.3);
+    --paper: #ffffff;
+    --paper-ink: #131722;
+
+    --warn: #ddac49;
+    --warn-soft: #241c0f;
+    --warn-line: #4a3a18;
+    --danger: #e8998f;
+    --danger-soft: #26130f;
+    --danger-line: #4c241e;
+
+    --thumb: rgba(160, 172, 190, 0.26);
+    --thumb-hover: rgba(160, 172, 190, 0.5);
+  }
+}
+
+:root[data-theme="dark"] {
+  --sunk: #070a0e;
+  --ground: #0d1016;
+  --surface: #151a23;
+  --surface-2: #1b212b;
+  --surface-3: #222937;
+
+  --ink: #e6eaf1;
+  --ink-soft: #98a2b3;
+  --ink-faint: #8a94a6;
+
+  --line: #262d3a;
+  --line-soft: #1e2530;
+  --edge-hi: rgba(255, 255, 255, 0.05);
+  --edge-shadow: rgba(0, 0, 0, 0.55);
+
+  --accent: #90b1ee;
+  --accent-ink: #0d1016;
+  --accent-soft: #1a2333;
+  --accent-line: #2e3c55;
+
+  --cite-bg: #262e3b;
+  --cite-bg-hover: #35404f;
+  --cite-line: #4b5567;
+  --cite-ink: #d2d9e3;
+  --cite-current-bg: #90b1ee;
+  --cite-current-ink: #0d1016;
+
+  --mark: rgba(144, 177, 238, 0.28);
+  --select: rgba(144, 177, 238, 0.3);
+  --paper: #ffffff;
+  --paper-ink: #131722;
+
+  --warn: #ddac49;
+  --warn-soft: #241c0f;
+  --warn-line: #4a3a18;
+  --danger: #e8998f;
+  --danger-soft: #26130f;
+  --danger-line: #4c241e;
+
+  --thumb: rgba(160, 172, 190, 0.26);
+  --thumb-hover: rgba(160, 172, 190, 0.5);
+}

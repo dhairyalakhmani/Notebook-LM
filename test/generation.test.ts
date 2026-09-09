@@ -14,7 +14,6 @@ import type { Passage } from "../src/retrieval/retriever.ts";
 
 const NOTEBOOK = "test-notebook";
 
-/** Records what it was asked, so a test can prove it was never called. */
 function stubModel(reply: string): CompletionModel & { prompts: string[] } {
   const prompts: string[] = [];
   return {
@@ -71,8 +70,6 @@ describe("buildPrompt", () => {
     // The two rules that keep an answer honest have to actually be in there.
     assert.ok(prompt.includes(REFUSAL));
     assert.ok(prompt.includes("ONLY the passages"));
-    // Best-first order is preserved. Matched on the label lines, not on "[1]"
-    // alone - the instructions use "[2]" and "[1][3]" as examples of the syntax.
     assert.ok(prompt.indexOf("[1] (Schema") < prompt.indexOf("[2] (billing"));
   });
 
@@ -101,7 +98,10 @@ describe("citedMarkers", () => {
 describe("normalizeMarkers", () => {
   it("accepts the full-width brackets gpt-oss emits instead of ASCII ones", () => {
     // Observed live: a fully grounded answer whose citations were all invisible.
-    assert.equal(normalizeMarkers("Domains isolate concerns【1】【3】."), "Domains isolate concerns[1][3].");
+    assert.equal(
+      normalizeMarkers("Domains isolate concerns【1】【3】."),
+      "Domains isolate concerns[1][3].",
+    );
     assert.equal(normalizeMarkers("A column【 5 】."), "A column[5].");
     assert.equal(normalizeMarkers("Already ascii [2]."), "Already ascii [2].");
   });
@@ -211,12 +211,17 @@ describe("answerQuestion", () => {
     });
 
     it("never refuses on a keyword-only hit, which has no cosine at all", async () => {
-      // `inspection_id` embeds to nothing in particular - BM25 is the only thing
-      // that can find it, and a cosine floor must not veto that.
       const answer = await answerQuestion("inspection_id", NOTEBOOK, {
         passages: [
           passage({
-            match: { chunkId: "c4", fused: 0.0164, dense: null, sparse: 8.1, denseRank: null, sparseRank: 1 },
+            match: {
+              chunkId: "c4",
+              fused: 0.0164,
+              dense: null,
+              sparse: 8.1,
+              denseRank: null,
+              sparseRank: 1,
+            },
           }),
         ],
         model: stubModel("It is the primary key [1]."),

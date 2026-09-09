@@ -1,12 +1,33 @@
 .env
 node_modules/
-STEPS.md
+
+# storage is derived data: chunks, vectors and embeddings can always be
+# rebuilt from the source files. sources/ holds the ingested originals.
 storage/*
 !storage/.gitkeep
-eval/results/
-scratch.ts
+storage/sources/
+storage/tmp/
+storage/*.db-wal
+storage/*.db-shm
 
-# the archived Python version
-.venv/
-__pycache__/
-*.pyc
+# source documents: large binaries that belong out of git. dbms-notes.md is the
+# exception because it is the sample the README and scripts/sandbox.mjs use in
+# their examples, so a fresh clone has something to ingest.
+#
+# It is NOT needed by the tests. The suite is deliberately self-contained: the
+# browser tests fixture their own sources through MSW, and the one real-PDF
+# check in highlight.test.ts skips itself when the book is absent, so a clone
+# without data/ still gets a green run.
+data/*
+!data/dbms-notes.md
+
+eval/results/
+
+# frontend build output and caches
+web/dist/
+.vite/
+coverage/
+*.local
+
+# throwaway storage for hand-verifying destructive routes (npm run api:sandbox)
+storage-sandbox/

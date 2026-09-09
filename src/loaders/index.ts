@@ -20,7 +20,6 @@ const LOADERS: readonly DocumentLoader[] = [
   new TextDocumentLoader(),
 ];
 
-/** Every extension the notebook can ingest, for help text and error messages. */
 export function supportedExtensions(): string[] {
   return [...new Set(LOADERS.flatMap((loader) => loader.extensions))].sort();
 }

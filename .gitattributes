@@ -1,0 +1,10 @@
+# The working tree is LF everywhere. Without this, core.autocrlf=true checks
+# files out as CRLF while Prettier writes LF, so `npm run format:check` can
+# never pass. Binary corpora are marked so git never tries to convert them.
+* text=auto eol=lf
+
+*.pdf binary
+*.db  binary
+*.png binary
+*.jpg binary
+*.woff2 binary

@@ -1,17 +1,6 @@
-/**
- * Score retrieval and generation SEPARATELY.
- *
- * That separation is the entire point of this file. When answers get worse, the
- * two halves fail for unrelated reasons and have unrelated fixes: if the right
- * passage never arrived, no prompt can rescue the answer, and you would spend an
- * evening tuning wording that was never the problem. So retrieval is scored
- * against the passages alone, before the model is involved at all.
- *
- *   npm run eval                 retrieval + generation
- *   npm run eval -- --retrieval  retrieval only: no API calls, no cost
- *   npm run eval -- --k 8        more passages per question
- */
-
+// Must come first: config.ts reads process.env at module scope.
+import "../env.ts";
+import { isRateLimitError } from "../llm/errors.ts";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
@@ -29,19 +18,13 @@ const RESULTS_DIR = "eval/results";
 interface Result {
   question: EvalQuestion;
   passages: Passage[];
-  /** 1-based position of the first passage that matches the ground truth, or
-   *  null when none of them do. */
   hitRank: number | null;
   answer: Answer | null;
-  /** Wall time of the LLM call alone, in ms. Null when generation was skipped. */
   generateMs: number | null;
-  /** Which of `expectedAnswerContains` the answer actually contained. */
   found: string[];
   missing: string[];
 }
 
-/** A passage is a hit when it is from the expected file and its page range
- *  overlaps a page the ground truth names. */
 function isHit(passage: Passage, question: EvalQuestion): boolean {
   if (question.expectedSource === null) return false;
   if (passage.filename !== question.expectedSource) return false;
@@ -67,26 +50,13 @@ function bar(numerator: number, denominator: number, width = 20): string {
   return "#".repeat(filled) + ".".repeat(width - filled);
 }
 
-/** The real reranker, with `topN` pinned - so how many candidates survive the
- *  rerank is a command-line variable rather than a config edit between runs. */
 async function cappedReranker(topN: number): Promise<RerankerInterface> {
   const reranker = await getReranker();
   return {
-    rerank: (question, candidates, chunks) =>
-      reranker.rerank(question, candidates, chunks, topN),
+    rerank: (question, candidates, chunks) => reranker.rerank(question, candidates, chunks, topN),
   };
 }
 
-/**
- * Groq's free tier allows 8000 tokens per MINUTE, and one grounded question is
- * ~6600 of them - so a batch of questions is rate-limited by construction, at
- * roughly one per minute.
- *
- * The wait belongs here and not in LLMClient: for an interactive question a
- * quota error must surface immediately, because a user staring at a spinner is
- * not helped by a silent 60-second sleep. A batch eval is the opposite - waiting
- * is exactly right, and the alternative is a run that cannot finish.
- */
 async function answerPatiently(
   question: string,
   notebook: string,
@@ -94,19 +64,16 @@ async function answerPatiently(
 ): Promise<{ answer: Answer; ms: number }> {
   for (let attempt = 1; ; attempt++) {
     try {
-      // Timed inside the try, so the reported latency is the model call alone.
-      // Including the rate-limit sleep would measure the free tier's quota
-      // policy and label it "LLM time", which is worse than not measuring.
       const started = performance.now();
       const answer = await answerQuestion(question, notebook, { passages });
       return { answer, ms: performance.now() - started };
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      const match = /try again in ([\d.]+)s/.exec(message);
-      if (!match || attempt > 4) throw error;
-      const waitMs = Math.ceil(Number(match[1]) * 1000) + 1500;
-      process.stdout.write(`  rate limited, waiting ${(waitMs / 1000).toFixed(0)}s ...
-`);
+      if (!isRateLimitError(error) || attempt > 4) throw error;
+      const waitMs = error.retryAfterMs + 1500;
+      process.stdout.write(
+        `  rate limited on ${error.limitedOn}, waiting ${(waitMs / 1000).toFixed(0)}s ...
+`,
+      );
       await new Promise((resolve) => setTimeout(resolve, waitMs));
     }
   }
@@ -130,8 +97,6 @@ async function run(): Promise<void> {
   if (!Number.isInteger(k) || k < 1) throw new Error("--k must be a positive integer");
 
   const all = await loadQuestions(notebook);
-  // Token budget is finite, so an A/B on a subset beats no A/B at all. Both arms
-  // must use the same prefix for the comparison to mean anything.
   const questions =
     values.limit === undefined ? all : all.slice(0, Number.parseInt(values.limit, 10));
   const answerable = questions.filter((question) => !question.unanswerable);
@@ -143,13 +108,11 @@ async function run(): Promise<void> {
       `  |  reranker ${values.rerank ? `on (${config.RERANK_MODEL}, keep ${values["rerank-keep"]})` : "off"}` +
       `  |  relevance floor ${config.MIN_RELEVANCE_COSINE || "off"}`,
   );
-  console.log(values.retrieval ? "retrieval only - no model calls\n" : `model ${config.GROQ_MODEL}\n`);
+  console.log(
+    values.retrieval ? "retrieval only - no model calls\n" : `model ${config.GROQ_MODEL}\n`,
+  );
 
-  // One retriever for the whole run: the embedder loads once, and the keyword
-  // index is built once, so the timings below are query cost and not setup.
   const retriever = await Retriever.create(notebook, {
-    // Overridable from the command line so the two arms of an A/B are one flag
-    // apart, rather than an edit to config between runs.
     reranker: values.rerank ? await cappedReranker(Number(values["rerank-keep"])) : null,
   });
   const results: Result[] = [];
@@ -167,8 +130,6 @@ async function run(): Promise<void> {
       generateMs = outcome.ms;
     }
 
-    // A fact counts as present when the answer contains ANY of its accepted
-    // wordings; it is reported by its first, which is the canonical one.
     const text = (answer?.text ?? "").toLowerCase();
     const present = (wordings: string[]): boolean =>
       wordings.some((wording) => text.includes(wording.toLowerCase()));
@@ -184,8 +145,6 @@ async function run(): Promise<void> {
 
   console.log(report(results, k, elapsed, values.retrieval));
 
-  // A score with no date attached is a score you cannot compare against. This is
-  // the difference between a demo and something you can trust.
   const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
   await mkdir(RESULTS_DIR, { recursive: true });
   const path = join(
@@ -283,8 +242,10 @@ function report(results: Result[], k: number, elapsed: number, retrievalOnly: bo
   const recallAt = (limit: number): number =>
     answerable.filter((result) => result.hitRank !== null && result.hitRank <= limit).length;
   const mrr =
-    answerable.reduce((sum, result) => sum + (result.hitRank === null ? 0 : 1 / result.hitRank), 0) /
-    (answerable.length || 1);
+    answerable.reduce(
+      (sum, result) => sum + (result.hitRank === null ? 0 : 1 / result.hitRank),
+      0,
+    ) / (answerable.length || 1);
 
   lines.push("");
   lines.push("RETRIEVAL  (the answerable questions only - did the right passage arrive?)");
@@ -300,9 +261,7 @@ function report(results: Result[], k: number, elapsed: number, retrievalOnly: bo
 
   // ------------------------------------------------------------ generation
   if (!retrievalOnly) {
-    const graded = answerable.filter(
-      (result) => result.question.expectedAnswerContains.length > 0,
-    );
+    const graded = answerable.filter((result) => result.question.expectedAnswerContains.length > 0);
     const allFacts = graded.filter((result) => result.missing.length === 0).length;
     const totalFacts = graded.reduce(
       (sum, result) => sum + result.question.expectedAnswerContains.length,
@@ -346,10 +305,6 @@ function report(results: Result[], k: number, elapsed: number, retrievalOnly: bo
         `${bar(uncited.length, answerable.length)}  ${uncited.length}/${answerable.length}`,
     );
 
-    // Depth, measured. Not a quality score on its own - a longer answer can be a
-    // worse one - but the two numbers a prompt asking for fuller answers is
-    // supposed to move, so they have to be visible next to the honesty rows that
-    // such a prompt puts at risk.
     const substantive = answerable.filter(
       (result) => result.answer !== null && !refused(result.answer),
     );

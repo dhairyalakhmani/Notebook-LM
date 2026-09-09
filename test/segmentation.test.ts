@@ -7,7 +7,6 @@ import { buildBlocks } from "../src/structure/blockBuilder.ts";
 import { bareLines, pdfPages } from "./helpers.ts";
 import type { CompletionModel } from "../src/chunking/segmentation/llm.ts";
 
-/** Which chunk contains a phrase - the question every one of these tests asks. */
 function locate(chunks: { text: string }[], needle: string): number {
   return chunks.findIndex((chunk) => chunk.text.includes(needle));
 }
@@ -115,11 +114,7 @@ describe("unstructured documents", () => {
   it("does not fall back to fixed-size cuts when there is no structure", async () => {
     const { children, report } = await chunkDocument(bareLines(rough), "doc");
     assert.equal(report.structureScore, 0, "this document genuinely has no headings");
-    assert.equal(
-      report.tokenSplitChunks,
-      0,
-      "nothing should need a blind token cut at this size",
-    );
+    assert.equal(report.tokenSplitChunks, 0, "nothing should need a blind token cut at this size");
     for (const sentence of rough) {
       assert.ok(
         children.some((c) => c.text.includes(sentence)),
@@ -137,8 +132,6 @@ describe("unstructured documents", () => {
 });
 
 describe("LLMSegmenter", () => {
-  // Four paragraph blocks, each two wrapped lines. Normal gaps inside a
-  // paragraph and a wide gap between them, which is what a real page looks like.
   const blocks = buildBlocks(
     pdfPages([
       { text: "Topic one begins here and" },

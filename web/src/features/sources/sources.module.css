@@ -1,0 +1,256 @@
+.detail {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--s5);
+  max-width: 78ch;
+}
+
+.detailHead {
+  padding-bottom: var(--s4);
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.detailTitle {
+  margin: 0;
+  font: 600 var(--text-title) / 1.3 var(--font-ui);
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.detailMeta {
+  margin: var(--s2) 0 0;
+  font: 400 var(--text-sm) / 1.55 var(--font-mono);
+  color: var(--ink-faint);
+  overflow-wrap: anywhere;
+}
+
+.warnText {
+  color: var(--warn);
+  font-weight: 500;
+}
+
+.statsBlock {
+  padding: var(--s4) 0;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s5);
+  margin: 0 0 var(--s4);
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.stat dt {
+  font: 600 var(--text-label) / 1 var(--font-ui);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.stat dd {
+  margin: 0;
+  font: 500 var(--text-lg) / 1 var(--font-mono);
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.stages {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  margin: 0 0 var(--s3);
+  padding: 0;
+  list-style: none;
+}
+
+.stages li {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+  font: 400 var(--text-sm) / 1.4 var(--font-ui);
+  color: var(--ink-soft);
+}
+
+.stages li::before {
+  content: "";
+  flex: 0 0 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent-line);
+}
+
+.stageTime {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-faint);
+}
+
+.sectionHeading {
+  margin: var(--s4) 0 var(--s2);
+  font: 600 var(--text-label) / 1 var(--font-ui);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.outline {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.outlineRow {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+  width: 100%;
+  min-height: var(--hit);
+  padding: var(--s1) var(--s2);
+  border: none;
+  border-radius: var(--radius-1);
+  background: transparent;
+  color: var(--ink);
+  font: 400 var(--text-ui) / 1.4 var(--font-ui);
+  text-align: left;
+  cursor: pointer;
+}
+
+.outlineRow:hover:not(:disabled) {
+  background: var(--surface-2);
+}
+
+.outlineRow:disabled {
+  cursor: default;
+  color: var(--ink-faint);
+}
+
+.outlineNumber {
+  flex: 0 0 auto;
+  min-width: 4ch;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-faint);
+}
+
+.outlineTitle {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.outlinePage {
+  margin-left: auto;
+  flex: 0 0 auto;
+  font: 400 var(--text-sm) / 1 var(--font-mono);
+  color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.uploadZone {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2);
+  padding: var(--s3);
+  border-bottom: 1px solid var(--line-soft);
+  transition: background 120ms ease;
+}
+
+.uploadZoneActive {
+  background: var(--accent-soft);
+  outline: 2px dashed var(--accent-line);
+  outline-offset: -4px;
+}
+
+.fileInput {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.uploadHint {
+  font: 400 var(--text-sm) / 1 var(--font-ui);
+  color: var(--ink-faint);
+}
+
+.uploadRow {
+  flex: 1 1 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  padding: var(--s2);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-2);
+  background: var(--surface-2);
+}
+
+.uploadHead {
+  display: flex;
+  align-items: center;
+  gap: var(--s1);
+}
+
+.uploadName {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 500 var(--text-sm) / 1.3 var(--font-ui);
+  color: var(--ink);
+}
+
+.uploadSize {
+  font: 400 var(--text-label) / 1 var(--font-mono);
+  color: var(--ink-faint);
+  white-space: nowrap;
+}
+
+.uploadNote {
+  margin: 0;
+  font: 400 var(--text-sm) / 1.4 var(--font-ui);
+  color: var(--ink-soft);
+}
+
+.uploadLog {
+  margin: 0;
+  font: 400 var(--text-label) / 1.4 var(--font-mono);
+  color: var(--ink-faint);
+  overflow-wrap: anywhere;
+}
+
+.uploadOk {
+  display: flex;
+  align-items: center;
+  gap: var(--s1);
+  margin: 0;
+  font: 400 var(--text-sm) / 1.4 var(--font-ui);
+  color: var(--accent);
+}
+
+.uploadWarn {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s1);
+  margin: 0;
+  font: 400 var(--text-sm) / 1.4 var(--font-ui);
+  color: var(--warn);
+}
+
+.confirm {
+  display: flex;
+  gap: var(--s1);
+  flex: 0 0 auto;
+}

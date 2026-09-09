@@ -1,0 +1,284 @@
+.chat {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.chatScroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--s4);
+}
+
+.thread {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s6);
+  max-width: 74ch;
+  margin: 0 auto;
+  padding: 0;
+  list-style: none;
+}
+
+.turn {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+
+.question {
+  align-self: flex-end;
+  max-width: 56ch;
+  padding: var(--s2) var(--s3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-3) var(--radius-3) var(--radius-1) var(--radius-3);
+  background: var(--surface);
+}
+
+.questionText {
+  margin: 0;
+  font: 500 var(--text-ui) / 1.5 var(--font-ui);
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.searchedFor {
+  display: flex;
+  align-items: center;
+  gap: var(--s1);
+  margin: var(--s1) 0 0;
+  font: 400 var(--text-sm) / 1.4 var(--font-ui);
+  color: var(--ink-faint);
+}
+
+.answer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+
+.prose {
+  margin: 0;
+  font: 400 var(--text-doc) / 1.65 var(--font-doc);
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.answeredAt {
+  margin: 0;
+  font: 400 var(--text-label) / 1 var(--font-mono);
+  color: var(--ink-faint);
+}
+
+.citation {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  margin: 0 1px;
+  padding: 0 4px;
+  border: 1px solid var(--cite-line);
+  border-radius: var(--radius-1);
+  background: var(--cite-bg);
+  color: var(--cite-ink);
+  font: 500 var(--text-label) / 1 var(--font-mono);
+  text-decoration: none;
+  vertical-align: 1px;
+  font-variant-numeric: tabular-nums;
+}
+
+.citation:hover {
+  background: var(--cite-bg-hover);
+}
+
+.citationCurrent {
+  background: var(--cite-current-bg);
+  border-color: var(--cite-current-bg);
+  color: var(--cite-current-ink);
+}
+
+.citationDead {
+  color: var(--ink-faint);
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+}
+
+.sources {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  margin: 0;
+  padding: var(--s3);
+  border-left: 2px solid var(--line);
+  list-style: none;
+}
+
+.sourceLine {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--s1) var(--s2);
+  align-items: baseline;
+}
+
+.sourceWhere {
+  font: 400 var(--text-sm) / 1.4 var(--font-mono);
+  color: var(--ink-soft);
+  overflow-wrap: anywhere;
+}
+
+.sourceQuote {
+  grid-column: 2;
+  font: 400 var(--text-ui) / 1.5 var(--font-doc);
+  color: var(--ink);
+}
+
+.sourceNoQuote {
+  grid-column: 2;
+  font: 400 var(--text-sm) / 1.4 var(--font-ui);
+  color: var(--ink-faint);
+}
+
+.pending {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  font: 400 var(--text-ui) / 1 var(--font-ui);
+  color: var(--ink-soft);
+}
+
+.spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--line);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 700ms linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.countdown {
+  align-self: center;
+  font: 500 var(--text-ui) / 1 var(--font-mono);
+  color: var(--warn);
+  font-variant-numeric: tabular-nums;
+}
+
+.scores {
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-2);
+  background: var(--surface-2);
+}
+
+.scores > summary {
+  padding: var(--s2) var(--s3);
+  cursor: pointer;
+  font: 400 var(--text-sm) / 1 var(--font-mono);
+  color: var(--ink-faint);
+}
+
+.scoreTable {
+  width: 100%;
+  border-collapse: collapse;
+  font: 400 var(--text-sm) / 1.5 var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.scoreTable th,
+.scoreTable td {
+  padding: var(--s1) var(--s3);
+  text-align: right;
+  color: var(--ink-soft);
+  border-top: 1px solid var(--line-soft);
+}
+
+.scoreTable th:nth-child(2),
+.scoreTable td:nth-child(2) {
+  text-align: left;
+}
+
+.scoreTable th {
+  font-weight: 500;
+  color: var(--ink-faint);
+}
+
+.scoreRowCited td {
+  color: var(--ink);
+  background: var(--accent-soft);
+}
+
+.scoreNote {
+  margin: 0;
+  padding: var(--s2) var(--s3);
+  font: 400 var(--text-sm) / 1.45 var(--font-ui);
+  color: var(--ink-faint);
+}
+
+.timings {
+  margin: 0;
+  font: 400 var(--text-label) / 1 var(--font-mono);
+  color: var(--ink-faint);
+}
+
+.composer {
+  flex: 0 0 auto;
+  padding: var(--s3) var(--s4);
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.composerRow {
+  display: flex;
+  gap: var(--s2);
+  align-items: flex-end;
+  max-width: 74ch;
+  margin: 0 auto;
+}
+
+.input {
+  flex: 1 1 auto;
+  min-height: 52px;
+  max-height: 30vh;
+  padding: var(--s2) var(--s3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-2);
+  background: var(--surface);
+  color: var(--ink);
+  font: 400 var(--text-ui) / 1.5 var(--font-ui);
+  resize: vertical;
+}
+
+.input:disabled {
+  background: var(--surface-3);
+  color: var(--ink-faint);
+}
+
+.composerFoot {
+  display: flex;
+  gap: var(--s3);
+  max-width: 74ch;
+  margin: var(--s2) auto 0;
+  font: 400 var(--text-sm) / 1 var(--font-mono);
+  color: var(--ink-faint);
+}
+
+.quota {
+  margin-left: auto;
+}
+
+.blocked {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  max-width: 74ch;
+  margin: 0 auto var(--s2);
+  font: 400 var(--text-sm) / 1.45 var(--font-ui);
+  color: var(--warn);
+}

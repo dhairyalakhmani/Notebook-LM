@@ -3,7 +3,6 @@ import { describe, it } from "node:test";
 import { detectColumns, joinBand, linesFromPieces } from "../src/loaders/pdfLoader.ts";
 import type { Piece } from "../src/loaders/pdfLoader.ts";
 
-/** A text run at a position. `width` defaults to a rough 0.5em per character. */
 function piece(
   text: string,
   left: number,
@@ -54,7 +53,6 @@ describe("joinBand - spacing the PDF only expressed as coordinates", () => {
 });
 
 describe("detectColumns", () => {
-  /** Two columns of `rows` lines each, with a gutter between them. */
   function twoColumnPage(rows = 6): Piece[] {
     const pieces: Piece[] = [];
     for (let row = 0; row < rows; row++) {
@@ -79,8 +77,6 @@ describe("detectColumns", () => {
   });
 
   it("does not mistake an indented block for a column", () => {
-    // A quote indented from the left margin shares the page with body text; the
-    // gutter test must not fire, because nothing sits to its left.
     const pieces = Array.from({ length: 12 }, (_, i) =>
       piece("body text at the margin", i < 6 ? 50 : 90, 100 + i * 14),
     );
@@ -92,11 +88,7 @@ describe("detectColumns", () => {
       piece("main body of the document", 50, 100 + i * 14),
     );
     pieces.push(piece("note", 480, 120)); // one lonely run on the right
-    assert.equal(
-      detectColumns(pieces, 600).length,
-      1,
-      "one run is far below MIN_COLUMN_SHARE",
-    );
+    assert.equal(detectColumns(pieces, 600).length, 1, "one run is far below MIN_COLUMN_SHARE");
   });
 
   it("does not try to split very short pages", () => {
@@ -119,8 +111,6 @@ describe("detectColumns", () => {
   });
 
   it("still refuses a three-column table", () => {
-    // Same three bands, but short cells - so the gaps are far too wide to be
-    // gutters. Splitting here would tear every row apart.
     const pieces: Piece[] = [];
     for (let row = 0; row < 4; row++) {
       pieces.push(piece("North", 50, 100 + row * 14));
@@ -140,18 +130,19 @@ describe("linesFromPieces", () => {
     }
     const texts = linesFromPieces(pieces, 1, 612).map((l) => l.text);
     assert.equal(texts.length, 12);
-    assert.ok(texts.slice(0, 6).every((t) => t.startsWith("L")), "left column first");
-    assert.ok(texts.slice(6).every((t) => t.startsWith("R")), "right column second");
+    assert.ok(
+      texts.slice(0, 6).every((t) => t.startsWith("L")),
+      "left column first",
+    );
+    assert.ok(
+      texts.slice(6).every((t) => t.startsWith("R")),
+      "right column second",
+    );
   });
 
   it("bands a large heading whose runs sit further apart", () => {
-    // 2.5pt of baseline jitter: beyond the old fixed 3pt only for big text, and
-    // well within 18pt * 0.3.
     const lines = linesFromPieces(
-      [
-        piece("Big", 50, 100, { fontSize: 18 }),
-        piece("Heading", 90, 102.5, { fontSize: 18 }),
-      ],
+      [piece("Big", 50, 100, { fontSize: 18 }), piece("Heading", 90, 102.5, { fontSize: 18 })],
       1,
       600,
     );

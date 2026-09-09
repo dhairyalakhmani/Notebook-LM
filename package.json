@@ -1,16 +1,33 @@
 {
-  "name": "notebooklm",
+  "name": "notebook",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "A NotebookLM-style RAG pipeline: ingest sources, hybrid search, cited answers.",
+  "description": "NoteBook: ask questions of your own documents and get answers quoted from them, with the page they came from.",
+  "workspaces": [
+    "web"
+  ],
   "scripts": {
     "notebook": "node --disable-warning=ExperimentalWarning main.ts",
-    "scratch": "node --disable-warning=ExperimentalWarning scratch.ts",
-    "typecheck": "tsc --noEmit",
-    "test": "node --disable-warning=ExperimentalWarning --test \"test/**/*.test.ts\"",
+    "notebook:sandbox": "node scripts/sandbox.mjs main.ts",
+    "api": "node --disable-warning=ExperimentalWarning src/api/server.ts",
+    "api:sandbox": "node scripts/sandbox.mjs src/api/server.ts",
     "eval": "node --disable-warning=ExperimentalWarning src/eval/runEval.ts",
-    "latency": "node --disable-warning=ExperimentalWarning src/eval/latency.ts"
+    "latency": "node --disable-warning=ExperimentalWarning src/eval/latency.ts",
+    "dev": "npm run --workspace web dev",
+    "build": "npm run --workspace web build",
+    "ui": "node --disable-warning=ExperimentalWarning src/api/server.ts --static web/dist",
+    "typecheck": "npm run typecheck:core && npm run --workspace web typecheck",
+    "typecheck:core": "tsc --noEmit",
+    "test": "npm run test:core && npm run test:web",
+    "test:core": "node --disable-warning=ExperimentalWarning --test \"test/**/*.test.ts\"",
+    "test:web": "npm run --workspace web test",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "check:deps": "node scripts/checkSingleVersion.mjs pdfjs-dist",
+    "check": "npm run format:check && npm run lint && npm run typecheck && npm run test && npm run check:deps"
   },
   "dependencies": {
     "@huggingface/transformers": "^4.2.0",
@@ -20,10 +37,23 @@
     "js-tiktoken": "^1.0.21",
     "mammoth": "^1.12.2",
     "openai": "^7.5.0",
-    "pdfjs-dist": "^6.2.108"
+    "pdfjs-dist": "6.2.108"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "@tanstack/eslint-plugin-query": "^5.102.8",
     "@types/node": "^26.3.0",
-    "typescript": "^7.0.2"
-  }
+    "eslint": "^9.39.5",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-jsx-a11y": "^6.10.2",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.12.0",
+    "prettier": "^3.9.6",
+    "typescript": "~5.9.0",
+    "typescript-eslint": "^8.70.0"
+  },
+  "overrides": {
+    "pdfjs-dist": "6.2.108"
+  },
+  "license": "MIT"
 }

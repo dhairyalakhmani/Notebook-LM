@@ -1,0 +1,142 @@
+.viewer {
+  background: var(--surface);
+  box-shadow:
+    inset 1px 0 0 var(--line),
+    inset -1px 0 0 var(--edge-hi);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+
+.head {
+  flex: 0 0 auto;
+  padding: var(--s3) var(--s4);
+  border-bottom: 1px solid var(--line-soft);
+}
+.title {
+  font-size: var(--text-ui);
+  font-weight: 500;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.where {
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  color: var(--ink-soft);
+  margin-top: var(--s1);
+  font-variant-numeric: tabular-nums;
+}
+
+.stage {
+  flex: 1 1 auto;
+  padding: var(--s3);
+  background: var(--sunk);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: auto;
+}
+.stage:focus {
+  outline: none;
+}
+
+.paper {
+  position: relative;
+  background: var(--paper);
+  border-radius: 2px;
+  box-shadow:
+    0 2px 6px var(--edge-shadow),
+    0 16px 40px -26px var(--edge-shadow);
+  flex: 0 0 auto;
+}
+.canvas {
+  display: block;
+  border-radius: 2px;
+}
+
+.textLayer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  line-height: 1;
+}
+.textLayer span {
+  position: absolute;
+  white-space: pre;
+  transform-origin: 0 0;
+  color: transparent;
+  cursor: text;
+}
+.hit {
+  background: var(--mark);
+  border-radius: 2px;
+}
+.textLayer ::selection {
+  background: var(--select);
+}
+
+.loading {
+  padding: var(--s10) 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  color: var(--ink-soft);
+}
+
+.foot {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s2);
+  padding: var(--s2) var(--s3);
+  border-top: 1px solid var(--line-soft);
+}
+.cluster {
+  display: flex;
+  align-items: center;
+  gap: var(--s1);
+}
+.page,
+.zoom {
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+.page {
+  min-width: 9ch;
+}
+.zoom {
+  min-width: 5ch;
+}
+
+.pageLabel {
+  font: 400 var(--text-sm) / 1 var(--font-mono);
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.textDocument {
+  align-self: stretch;
+  max-width: 78ch;
+  margin: 0 auto;
+  padding: var(--s5);
+  border-radius: var(--radius-2);
+  background: var(--paper);
+  color: var(--paper-ink);
+  font: 400 var(--text-doc) / 1.6 var(--font-doc);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  box-shadow: 0 2px 6px var(--edge-shadow);
+}
+
+.textDocument mark {
+  background: var(--mark);
+  color: inherit;
+  border-radius: 2px;
+}

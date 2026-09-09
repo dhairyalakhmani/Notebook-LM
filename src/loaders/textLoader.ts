@@ -13,8 +13,6 @@ export class TextDocumentLoader extends DocumentLoader {
     const raw = await readFile(filePath, "utf8");
 
     const lines: TextLine[] = [];
-    // A blank line is the paragraph break in a text file - the one structural
-    // signal the format has. Record it rather than dropping it.
     let blankBefore = false;
     for (const line of raw.split(/\r?\n/)) {
       const stripped = line.trim();

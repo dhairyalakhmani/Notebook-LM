@@ -1,13 +1,12 @@
 import type { DocumentPage } from "../models.ts";
 
-const EDGE_LINES = 2;          // only the top/bottom lines can be furniture
-const REPEAT_RATIO = 0.6;      // on 60%+ of pages -> it is a header/footer
-const MIN_PAGES_TO_JUDGE = 3;  // with 1-2 pages, repetition proves nothing
+const EDGE_LINES = 2; // only the top/bottom lines can be furniture
+const REPEAT_RATIO = 0.6; // on 60%+ of pages -> it is a header/footer
+const MIN_PAGES_TO_JUDGE = 3; // with 1-2 pages, repetition proves nothing
 
 const DIGITS = /\d+/g;
 const PAGE_NUMBER = /^(page\s*)?[ivxlcdm\d]+(\s*(\/|of|-)\s*\d+)?$/i;
 
-/** "Page 3 of 40" and "Page 4 of 40" must look like the same line. */
 function fingerprint(text: string): string {
   return text.toLowerCase().replace(DIGITS, "#").trim();
 }

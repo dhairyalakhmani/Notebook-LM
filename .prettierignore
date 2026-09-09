@@ -1,0 +1,17 @@
+node_modules/
+web/dist/
+web/node_modules/
+package-lock.json
+data/
+storage/
+coverage/
+
+# Hand-formatted prose and hand-aligned tables. Questions.md is a padded
+# markdown table whose columns are aligned by hand; reflowing it loses
+# information a formatter cannot see.
+*.md
+
+# Eval inputs. One page number per line is deliberate: the arrays get edited
+# by hand and read by eye when a retrieval result looks wrong.
+eval/questions/
+eval/results/

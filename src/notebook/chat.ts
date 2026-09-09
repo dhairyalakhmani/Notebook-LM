@@ -1,33 +1,17 @@
-/**
- * A notebook conversation: history in, cited answer out, both turns saved.
- *
- * This is the layer the CLI and any future UI both call, so the ordering below
- * is the product's behaviour rather than one caller's convenience:
- *
- *   load recent history -> rewrite the question if it is a follow-up
- *   -> retrieve for the REWRITTEN question -> answer from those passages only
- *   -> persist the user turn and the assistant turn
- *
- * **The boundary that matters:** history reaches the rewrite step and stops
- * there. It is never added to the answer prompt. A prior answer is model
- * output, not source text - feeding it back would let turn one's small
- * imprecision become turn three's cited fact, which is the precise failure this
- * project exists to prevent. Every answer is grounded in passages retrieved
- * now, from the documents, and in nothing else.
- */
-
 import * as config from "../config.ts";
 import { answerQuestion } from "../generation/answer.ts";
 import { resolveQuestion } from "../generation/followup.ts";
 import { LLMClient } from "../llm/client.ts";
+import { asRateLimitError, isRateLimitError } from "../llm/errors.ts";
+import { chooseQuote } from "../generation/quote.ts";
 import { Retriever } from "../retrieval/retriever.ts";
 import { NotebookStore } from "./store.ts";
 import type { Answer } from "../generation/answer.ts";
 import type { CompletionModel } from "../llm/client.ts";
-import type { ChatMessage, Citation } from "../models.ts";
+import type { ChatMessage, Chunk, Citation, StoredPassage } from "../models.ts";
+import type { QuotaSnapshot } from "../llm/errors.ts";
+import type { Passage } from "../retrieval/retriever.ts";
 
-/** Turns of history offered to the rewriter: three exchanges. Enough for what
- *  "that" can plausibly mean, small enough to keep the call cheap. */
 const HISTORY_TURNS = 6;
 
 export interface AskOptions {
@@ -35,33 +19,74 @@ export interface AskOptions {
   store?: NotebookStore;
   model?: CompletionModel;
   k?: number;
-  /** Skip loading and saving history - a one-off question, as `ask --no-history`. */
   stateless?: boolean;
+  sourceIds?: readonly string[];
+  historyTurns?: number;
+}
+
+export interface AskTimings {
+  rewriteMs: number;
+  retrieveMs: number;
+  answerMs: number;
+  totalMs: number;
 }
 
 export interface AskResult {
   answer: Answer;
-  /** What the user typed. */
   question: string;
-  /** What retrieval actually searched for. Differs on a resolved follow-up. */
   searchedFor: string;
   rewritten: boolean;
-  /** How many turns preceded this one. */
   historyLength: number;
+  citations: Citation[];
+  timings: AskTimings;
+  quota: QuotaSnapshot | null;
+  userMessageId: number | null;
+  assistantMessageId: number | null;
 }
 
-/** Citations are stored by where they point, not by chunk id - see models.ts. */
-function citationsOf(answer: Answer): Citation[] {
+function citationsOf(answer: Answer, children: Map<string, Chunk>): Citation[] {
   return answer.used.map((marker) => {
     const passage = answer.passages[marker - 1]!;
+    const child = children.get(passage.match.chunkId) ?? null;
+    const choice = chooseQuote(answer.text, marker, passage, child);
     return {
       marker,
       filename: passage.filename,
       pageStart: passage.pageStart,
       pageEnd: passage.pageEnd,
       headingPath: passage.headingPath,
+      sourceId: passage.documentId,
+      quote: choice?.quote ?? null,
     };
   });
+}
+
+function passagesOf(answer: Answer): StoredPassage[] {
+  const cited = new Set(answer.used);
+  return answer.passages.map((passage: Passage, index) => ({
+    marker: index + 1,
+    documentId: passage.documentId,
+    filename: passage.filename,
+    pageStart: passage.pageStart,
+    pageEnd: passage.pageEnd,
+    headingPath: passage.headingPath,
+    cosine: passage.match.dense,
+    bm25: passage.match.sparse,
+    denseRank: passage.match.denseRank,
+    sparseRank: passage.match.sparseRank,
+    fused: passage.match.fused,
+    matchCount: passage.matchCount,
+    cited: cited.has(index + 1),
+  }));
+}
+
+async function inPhase<T>(phase: "rewrite" | "answer", work: () => Promise<T>): Promise<T> {
+  try {
+    return await work();
+  } catch (error) {
+    const limit = isRateLimitError(error) ? error : asRateLimitError(error);
+    throw limit ? limit.withPhase(phase) : error;
+  }
 }
 
 export async function askInNotebook(
@@ -72,39 +97,54 @@ export async function askInNotebook(
   const store = options.store ?? new NotebookStore();
   const model = options.model ?? new LLMClient(config.GROQ_MODEL);
 
-  const history = options.stateless ? [] : store.recentMessages(notebook, HISTORY_TURNS);
-  const resolved = await resolveQuestion(question, history, model);
+  const startedAt = performance.now();
+  const historyTurns = options.historyTurns ?? HISTORY_TURNS;
+  const history = options.stateless ? [] : store.recentMessages(notebook, historyTurns);
+
+  const rewriteStarted = performance.now();
+  const resolved = await inPhase("rewrite", () => resolveQuestion(question, history, model));
+  const rewriteMs = performance.now() - rewriteStarted;
 
   const retriever = options.retriever ?? (await Retriever.create(notebook, { store }));
+  const retrieveStarted = performance.now();
   const passages = await retriever.retrieve(resolved.question, {
     ...(options.k === undefined ? {} : { k: options.k }),
+    ...(options.sourceIds === undefined ? {} : { documentIds: options.sourceIds }),
   });
+  const retrieveMs = performance.now() - retrieveStarted;
 
-  // Note `model` is passed through: one client, so a stub in tests intercepts
-  // both the rewrite and the answer.
-  const answer = await answerQuestion(resolved.question, notebook, { passages, model });
+  const answerStarted = performance.now();
+  const answer = await inPhase("answer", () =>
+    answerQuestion(resolved.question, notebook, { passages, model }),
+  );
+  const answerMs = performance.now() - answerStarted;
+
+  const children = store.getChunks(answer.passages.map((passage) => passage.match.chunkId));
+
+  const citations = citationsOf(answer, children);
+
+  let userMessageId: number | null = null;
+  let assistantMessageId: number | null = null;
 
   if (!options.stateless) {
     const now = new Date().toISOString();
-    // The user's own words are stored, with the rewrite alongside rather than in
-    // place of them - a thread that silently replaced what someone typed would
-    // be a confusing thing to scroll back through.
-    store.addMessage({
+    userMessageId = store.addMessage({
       notebook,
       role: "user",
       text: question,
       createdAt: now,
       citations: [],
       resolvedQuestion: resolved.rewritten ? resolved.question : null,
-    });
-    store.addMessage({
+    }).messageId;
+    assistantMessageId = store.addMessage({
       notebook,
       role: "assistant",
       text: answer.text,
       createdAt: new Date().toISOString(),
-      citations: citationsOf(answer),
+      citations,
+      passages: passagesOf(answer),
       resolvedQuestion: null,
-    });
+    }).messageId;
   }
 
   return {
@@ -113,6 +153,16 @@ export async function askInNotebook(
     searchedFor: resolved.question,
     rewritten: resolved.rewritten,
     historyLength: history.length,
+    citations,
+    timings: {
+      rewriteMs,
+      retrieveMs,
+      answerMs,
+      totalMs: performance.now() - startedAt,
+    },
+    quota: model.lastQuota ?? null,
+    userMessageId,
+    assistantMessageId,
   };
 }
 

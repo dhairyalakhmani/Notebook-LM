@@ -48,7 +48,10 @@ describe("parent/child fan-out scales with section size", () => {
 describe("overlap is reserved only when a split will happen", () => {
   it("does not split content that fits the full budget", () => {
     // ~300 tokens: under maxTokens 350, but over the 290 left after reserving 60.
-    const text = Array.from({ length: 35 }, (_, i) => `Sentence ${i} carries a few words here.`).join(" ");
+    const text = Array.from(
+      { length: 35 },
+      (_, i) => `Sentence ${i} carries a few words here.`,
+    ).join(" ");
     const size = counter.count(text);
     assert.ok(size > 290 && size < 350, `fixture should be 290-350 tokens, was ${size}`);
 
@@ -57,7 +60,10 @@ describe("overlap is reserved only when a split will happen", () => {
   });
 
   it("still honours the ceiling once a split is needed", () => {
-    const text = Array.from({ length: 200 }, (_, i) => `Sentence ${i} carries a few words here.`).join(" ");
+    const text = Array.from(
+      { length: 200 },
+      (_, i) => `Sentence ${i} carries a few words here.`,
+    ).join(" ");
     const pieces = splitToSize([text], { maxTokens: 350, overlapTokens: 60, counter });
     assert.ok(pieces.length > 1);
     for (const piece of pieces) {

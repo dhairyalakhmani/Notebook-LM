@@ -14,7 +14,6 @@ function store(): NotebookStore {
   return new NotebookStore(mkdtempSync(join(tmpdir(), "chat-")));
 }
 
-/** Replies with a queue of canned answers, recording every prompt it was given. */
 function stubModel(...replies: string[]): CompletionModel & { prompts: string[] } {
   const queue = [...replies];
   const prompts: string[] = [];
@@ -149,8 +148,6 @@ describe("follow-up resolution", () => {
   });
 
   it("falls back to the literal question when the rewrite is not a question", async () => {
-    // A model that answers instead of rewriting. Searching for an answer would
-    // send retrieval somewhere the user never asked about.
     const model = stubModel(
       "Queuing delay matters because packets wait in the buffer, and this is " +
         "the component that varies with congestion, unlike the other three which " +
@@ -165,7 +162,9 @@ describe("follow-up resolution", () => {
 
   it("falls back when the rewrite is short but still prose", async () => {
     // Under any length cap, so the sentence-shape check is what has to catch it.
-    const model = stubModel("Queuing delay matters. It varies with congestion. The rest are fixed.");
+    const model = stubModel(
+      "Queuing delay matters. It varies with congestion. The rest are fixed.",
+    );
     const resolved = await resolveQuestion("why that?", history, model);
 
     assert.equal(resolved.question, "why that?");
@@ -190,9 +189,6 @@ describe("follow-up resolution", () => {
   });
 
   it("shows the rewriter how to handle a subject change", () => {
-    // Regression guard for a measured failure: with rules alone, "and what about
-    // BGP?" became "How does BGP relate to ... delay?", which the corpus does not
-    // answer - so a good rewrite turned into a false refusal.
     const prompt = buildFollowupPrompt("and what about BGP?", history);
     assert.ok(
       prompt.includes("Latest question: and what about BGP?\nRewritten question: What is BGP?"),

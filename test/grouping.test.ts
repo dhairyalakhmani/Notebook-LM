@@ -5,8 +5,6 @@ import * as config from "../src/config.ts";
 import { pdfPages } from "./helpers.ts";
 import type { LineSpec } from "./helpers.ts";
 
-/** A domain heading with several table subsections under it - the shape that
- *  makes grouping worth doing. */
 function domain(name: string, tables: string[]): LineSpec[] {
   const lines: LineSpec[] = [{ text: name, fontSize: 13, isBold: true, gap: 24 }];
   for (const table of tables) {
@@ -89,10 +87,7 @@ describe("ancestor grouping", () => {
 
   it("splits a group when the siblings together exceed the budget", async () => {
     const many = Array.from({ length: 40 }, (_, i) => `Table${i}`);
-    const { parents, children } = await chunkDocument(
-      pdfPages(domain("BIG DOMAIN", many)),
-      "d",
-    );
+    const { parents, children } = await chunkDocument(pdfPages(domain("BIG DOMAIN", many)), "d");
     assert.ok(parents.length > 1, "one domain too large for one parent must split");
     assert.equal(children.length, 40, "every table still becomes its own child");
     for (const parent of parents) {

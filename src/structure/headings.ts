@@ -1,22 +1,6 @@
 import type { TextLine } from "../models.ts";
 import * as config from "../config.ts";
 
-/**
- * Deciding what is a heading.
- *
- * Formats that carry real structure (markdown, docx, html) say so outright via
- * `headingLevel`, and are believed without argument. PDFs say nothing, so the
- * intent has to be reconstructed from typography.
- *
- * Everything here returns *evidence*, not a verdict, because a single signal is
- * never enough: bold alone catches emphasised sentences, size alone misses
- * same-size bold headings, and both miss headings in documents typeset with one
- * font throughout.
- */
-
-// A trailing colon is NOT a disqualifier: "Frequent Queries:" and "Note:" are
-// among the most common heading shapes there are. Only the marks that end a
-// running sentence count.
 const SENTENCE_ENDINGS = [".", ",", ";"];
 const BRACKET_PAIRS: readonly [string, string][] = [
   ["(", ")"],
@@ -24,21 +8,15 @@ const BRACKET_PAIRS: readonly [string, string][] = [
   ["{", "}"],
 ];
 
-/** "1.", "1.2", "A.", "IV." and friends - a numbered heading in almost any scheme. */
 const NUMBERED = /^(\d+(\.\d+)*\.?|[A-Z]\.|[IVXLC]+\.)\s+\S/;
-/** ALL CAPS, or Title Case With Most Words Capitalised. */
 const ALL_CAPS = /^[^a-z]*[A-Z][^a-z]*$/;
 
 export interface HeadingEvidence {
   isHeading: boolean;
-  /** 1-6. Derived from font size rank for PDFs, given outright elsewhere. */
   level: number | null;
-  /** How many independent signals agreed. Used to break ties, and to decide
-   *  whether a document has trustworthy structure at all. */
   confidence: number;
 }
 
-/** The most-used non-bold font size, weighted by how much text is set in it. */
 export function bodyFontSize(lines: TextLine[]): number | null {
   const weights = new Map<number, number>();
   for (const line of lines) {
@@ -53,17 +31,11 @@ function count(text: string, needle: string): number {
   return text.split(needle).length - 1;
 }
 
-/** A line that hangs open - an unclosed quote or bracket - is a wrapped heading. */
 export function isUnterminated(text: string): boolean {
   if (count(text, '"') % 2 === 1) return true;
   return BRACKET_PAIRS.some(([open, close]) => count(text, open) > count(text, close));
 }
 
-/**
- * Font sizes above body size, largest first. A line set in the Nth distinct
- * size above body text is a level-N heading, which is how a PDF's visual
- * hierarchy becomes a real outline.
- */
 export function headingSizeLadder(lines: TextLine[], bodySize: number | null): number[] {
   if (bodySize == null) return [];
   const larger = new Set<number>();
@@ -78,7 +50,6 @@ export function headingSizeLadder(lines: TextLine[], bodySize: number | null): n
 export interface HeadingContext {
   bodySize: number | null;
   ladder: number[];
-  /** Most common left margin. A heading is often outdented relative to body text. */
   bodyLeft: number | null;
 }
 
@@ -90,8 +61,7 @@ export function headingContext(lines: TextLine[]): HeadingContext {
     const bucket = Math.round(line.left);
     lefts.set(bucket, (lefts.get(bucket) ?? 0) + 1);
   }
-  const bodyLeft =
-    lefts.size > 0 ? [...lefts].reduce((a, b) => (b[1] > a[1] ? b : a))[0] : null;
+  const bodyLeft = lefts.size > 0 ? [...lefts].reduce((a, b) => (b[1] > a[1] ? b : a))[0] : null;
   return { bodySize, ladder: headingSizeLadder(lines, bodySize), bodyLeft };
 }
 

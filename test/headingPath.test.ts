@@ -5,7 +5,6 @@ import { buildBlocks } from "../src/structure/blockBuilder.ts";
 import { pdfPages } from "./helpers.ts";
 import type { DocumentPage, TextLine } from "../src/models.ts";
 
-/** Markdown-style pages, where heading levels are explicit and trustworthy. */
 function markdownPages(specs: { text: string; level?: number }[]): DocumentPage[] {
   const lines: TextLine[] = specs.map((spec) => ({
     text: spec.text,
@@ -17,8 +16,6 @@ function markdownPages(specs: { text: string; level?: number }[]): DocumentPage[
 }
 
 describe("heading path - flat PDF levels", () => {
-  // Every heading is bold at the same size, which is the normal PDF case. Depth
-  // has to come from run structure: a heading with no body is an ancestor.
   const pages = pdfPages([
     { text: "1. USER DOMAIN", fontSize: 13, isBold: true },
     { text: "Customer", fontSize: 13, isBold: true },
@@ -37,8 +34,6 @@ describe("heading path - flat PDF levels", () => {
   });
 
   it("keeps the ancestor for later siblings - the bug this replaced", async () => {
-    // "Branch" is a sibling of "Customer", not a new top-level section. Popping
-    // the domain here is what produced bare ["Branch"] paths.
     const { children } = await chunkDocument(pages, "d");
     const branch = children.find((p) => p.text.includes("physical rental location"));
     assert.deepEqual(branch?.headingPath, ["1. USER DOMAIN", "Branch"]);
@@ -75,7 +70,7 @@ describe("heading edge cases", () => {
     const blocks = buildBlocks(
       pdfPages([
         { text: 'Available vehicles by branch (The "Whiteboard"', fontSize: 13, isBold: true },
-        { text: 'Version)', fontSize: 13, isBold: true },
+        { text: "Version)", fontSize: 13, isBold: true },
         { text: "This query lists every vehicle currently available at each branch." },
       ]),
     );

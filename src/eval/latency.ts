@@ -1,22 +1,11 @@
-/**
- * Where the seconds actually go, on the path a real user walks.
- *
- * A single averaged "42s per question" hides which stage to attack. This times
- * each one separately, and splits the cost a user pays *once* per session
- * (loading the embedder, building the keyword index) from the cost they pay on
- * *every* question - because those two have completely different fixes.
- *
- *   npm run latency -- --notebook networking
- *   npm run latency -- --notebook networking --retrieval   (no API calls)
- */
-
+// Must come first: config.ts reads process.env at module scope.
+import "../env.ts";
 import { parseArgs } from "node:util";
 import * as config from "../config.ts";
 import { answerQuestion } from "../generation/answer.ts";
 import { getEmbedder } from "../embedding/index.ts";
 import { NotebookStore } from "../notebook/store.ts";
 import { Retriever } from "../retrieval/retriever.ts";
-import { hybridSearch } from "../search/hybrid.ts";
 import { KeywordIndex } from "../search/keywordIndex.ts";
 import { VectorStore } from "../search/vectorStore.ts";
 import { loadQuestions } from "./questions.ts";
@@ -69,7 +58,9 @@ const [keywordIndex, indexMs] = await timed(() => KeywordIndex.forNotebook(noteb
 console.log(
   `  build keyword index    ${indexMs.toFixed(0).padStart(6)}ms   (${keywordIndex.size} chunks)`,
 );
-console.log(`  TOTAL STARTUP          ${(embedderMs + vectorMs + indexMs).toFixed(0).padStart(6)}ms\n`);
+console.log(
+  `  TOTAL STARTUP          ${(embedderMs + vectorMs + indexMs).toFixed(0).padStart(6)}ms\n`,
+);
 
 // --------------------------------------------------------- once per question
 const embed: number[] = [];
@@ -85,8 +76,6 @@ const retriever = await Retriever.create(notebook, { store, vectorStore, embedde
 for (const question of questions) {
   const startedAll = performance.now();
 
-  // The same three calls hybridSearch makes, timed individually. Duplicated on
-  // purpose: measuring them through retrieve() would only give one number.
   const [vector, embedMs] = await timed(() => embedder.embedQuery(question));
   const [, denseMs] = await timed(() =>
     vectorStore.search(notebook, vector, config.CANDIDATES_K, embedder.modelId),

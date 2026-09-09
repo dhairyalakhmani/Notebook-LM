@@ -11,7 +11,12 @@ describe("htmlToLines", () => {
     const lines = htmlToLines("<h1>One</h1><h2>Two</h2><h3>Three</h3><p>Body.</p>");
     assert.deepEqual(
       lines.map((l) => [l.text, l.headingLevel ?? null]),
-      [["One", 1], ["Two", 2], ["Three", 3], ["Body.", null]],
+      [
+        ["One", 1],
+        ["Two", 2],
+        ["Three", 3],
+        ["Body.", null],
+      ],
     );
   });
 
@@ -20,17 +25,26 @@ describe("htmlToLines", () => {
       `<nav>Home Docs</nav><script>evil()</script><style>p{}</style>
        <p>Real content.</p><footer>Copyright</footer>`,
     );
-    assert.deepEqual(lines.map((l) => l.text), ["Real content."]);
+    assert.deepEqual(
+      lines.map((l) => l.text),
+      ["Real content."],
+    );
   });
 
   it("marks list items so they group into one list block", () => {
     const lines = htmlToLines("<ul><li>First</li><li>Second</li></ul>");
-    assert.deepEqual(lines.map((l) => l.text), ["- First", "- Second"]);
+    assert.deepEqual(
+      lines.map((l) => l.text),
+      ["- First", "- Second"],
+    );
   });
 
   it("flattens a nested list without losing the inner items", () => {
     const lines = htmlToLines("<ul><li>Outer<ul><li>Inner</li></ul></li></ul>");
-    assert.deepEqual(lines.map((l) => l.text), ["- Outer", "- Inner"]);
+    assert.deepEqual(
+      lines.map((l) => l.text),
+      ["- Outer", "- Inner"],
+    );
   });
 
   it("carries table cells as data, not as spacing", () => {
@@ -40,7 +54,10 @@ describe("htmlToLines", () => {
 
   it("keeps one paragraph per block element", () => {
     const lines = htmlToLines("<div><p>One.</p><p>Two.</p></div>");
-    assert.deepEqual(lines.map((l) => l.text), ["One.", "Two."]);
+    assert.deepEqual(
+      lines.map((l) => l.text),
+      ["One.", "Two."],
+    );
   });
 
   it("does not flatten nested structure into a single line", () => {
@@ -76,8 +93,6 @@ describe("HTML loader, end to end", () => {
   });
 
   it("keeps the table recognisable after cleaning", async () => {
-    // Cleaning collapses whitespace, so a spacing-based table signal would be
-    // gone by this point. The `cells` field is what survives.
     const { children } = await chunkDocument(cleanPages(await loadDocument(path)), "d");
     assert.ok(
       children.some((c) => c.blockKinds.includes("table")),
@@ -110,10 +125,7 @@ describe("DOCX loader, end to end", () => {
   });
 
   it("groups the two subsections under one parent", async () => {
-    const { parents, children } = await chunkDocument(
-      cleanPages(await loadDocument(path)),
-      "d",
-    );
+    const { parents, children } = await chunkDocument(cleanPages(await loadDocument(path)), "d");
     assert.equal(parents.length, 1, "both sections share the Fleet Operations ancestor");
     assert.equal(children.length, 2);
     assert.deepEqual(parents[0]!.headingPath, ["Fleet Operations"]);

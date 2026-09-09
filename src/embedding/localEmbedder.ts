@@ -4,19 +4,6 @@ import { POOLING, QUERY_PREFIX, isEmbeddable, normalize } from "./shared.ts";
 import type { Embedder } from "./base.ts";
 import type { FeatureExtractionPipeline } from "@huggingface/transformers";
 
-/**
- * Embeddings from a local ONNX model, in-process, offline.
- *
- * Kept alongside the hosted path deliberately: it is the offline development
- * path, the path tests can use without a network, and the escape hatch if a
- * hosted model is retired. Its vectors are only interchangeable with the API's
- * if the model is genuinely the same - which is why the vector store records
- * which model produced what.
- *
- * One thing to know before using this in a server: ONNX inference runs on the
- * calling thread and blocks Node's event loop for its whole duration (measured:
- * 1 event-loop tick in 1101ms). In an HTTP process it must go in a worker.
- */
 export class LocalEmbedder implements Embedder {
   readonly modelId: string;
   readonly dimensions: number;
@@ -29,24 +16,13 @@ export class LocalEmbedder implements Embedder {
     this.dimensions = dimensions;
   }
 
-  /** Downloading and starting the model is async, so construction is too. */
   static async create(modelId: string = config.EMBEDDING_MODEL): Promise<LocalEmbedder> {
     const extractor = await pipeline("feature-extraction", modelId);
-    // Ask the model its own dimension rather than hard-coding 384, so a model
-    // swap cannot silently disagree with the vector store.
     const probe = await extractor("dimension probe", { pooling: POOLING, normalize: true });
     const dimensions = (probe.tolist() as number[][])[0]!.length;
     return new LocalEmbedder(extractor, modelId, dimensions);
   }
 
-  /**
-   * Batch 16, sorted by length.
-   *
-   * Measured on this machine: batch 64 in natural order costs 61.6ms/chunk,
-   * batch 1 costs 24.8ms, and batch 16 sorted by length costs 20.9ms. Every
-   * sequence in a batch is padded to the longest one, so mixing lengths spends
-   * most of the compute on padding. Sorting first removes that waste.
-   */
   async embedDocuments(texts: string[]): Promise<number[][]> {
     if (texts.length === 0) return [];
 

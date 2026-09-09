@@ -1,0 +1,257 @@
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s2);
+  min-height: var(--hit);
+  padding: 0 var(--s3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-2);
+  background: var(--surface);
+  color: var(--ink);
+  font: 500 var(--text-ui) / 1 var(--font-ui);
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease;
+}
+
+.button:hover:not(:disabled) {
+  background: var(--surface-2);
+  border-color: var(--accent-line);
+}
+
+.button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+
+.primary:hover:not(:disabled) {
+  background: var(--accent);
+  border-color: var(--accent);
+  filter: brightness(1.1);
+}
+
+.quiet {
+  background: transparent;
+  border-color: transparent;
+}
+
+.quiet:hover:not(:disabled) {
+  background: var(--surface-3);
+  border-color: transparent;
+}
+
+.danger {
+  color: var(--danger);
+  border-color: var(--danger-line);
+  background: var(--danger-soft);
+}
+
+.iconButton {
+  width: var(--hit);
+  min-height: var(--hit);
+  padding: 0;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  align-items: flex-start;
+  max-width: 46ch;
+  margin: var(--s6) auto;
+  padding: var(--s4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-3);
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.cardCentred {
+  align-items: center;
+  text-align: center;
+}
+
+.cardTitle {
+  font: 600 var(--text-lg) / 1.3 var(--font-ui);
+  color: var(--ink);
+}
+
+.cardBody {
+  font: 400 var(--text-ui) / 1.55 var(--font-ui);
+  color: var(--ink-soft);
+}
+
+.cardSaid {
+  align-self: stretch;
+  margin-top: var(--s1);
+  padding: var(--s3);
+  border-left: 2px solid var(--accent-line);
+  border-radius: 0 var(--radius-2) var(--radius-2) 0;
+  background: var(--surface-2);
+  font: 400 var(--text-doc) / 1.5 var(--font-doc);
+  color: var(--ink);
+}
+
+.toneRefusal {
+  border-color: var(--accent-line);
+}
+
+.toneWarn {
+  border-color: var(--warn-line);
+  background: var(--warn-soft);
+}
+
+.toneWarn .cardTitle,
+.toneWarn .cardBody {
+  color: var(--warn);
+}
+
+.toneDanger {
+  border-color: var(--danger-line);
+  background: var(--danger-soft);
+}
+
+.toneDanger .cardTitle,
+.toneDanger .cardBody {
+  color: var(--danger);
+}
+
+.cardActions {
+  display: flex;
+  gap: var(--s2);
+  margin-top: var(--s2);
+}
+
+.skeleton {
+  border-radius: var(--radius-2);
+  background: var(--surface-3);
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+.skeletonStack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  padding: var(--s3);
+}
+
+.progressTrack {
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-3);
+  overflow: hidden;
+}
+
+.progressFill {
+  height: 100%;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  transition: width 200ms ease;
+}
+
+.progressIndeterminate .progressFill {
+  width: 35%;
+  animation: slide 1.2s ease-in-out infinite;
+}
+
+@keyframes slide {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(300%);
+  }
+}
+
+.splitter {
+  flex: 0 0 7px;
+  align-self: stretch;
+  border: none;
+  padding: 0;
+  background: transparent;
+  cursor: col-resize;
+  position: relative;
+}
+
+.splitter::after {
+  content: "";
+  position: absolute;
+  inset: 0 3px;
+  background: var(--line-soft);
+  transition: background 120ms ease;
+}
+
+.splitter:hover::after,
+.splitter:focus-visible::after {
+  background: var(--accent-line);
+}
+
+.toasts {
+  position: fixed;
+  right: var(--s4);
+  bottom: var(--s4);
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  max-width: 42ch;
+}
+
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s2);
+  padding: var(--s3);
+  border: 1px solid var(--danger-line);
+  border-radius: var(--radius-2);
+  background: var(--danger-soft);
+  color: var(--danger);
+  font: 400 var(--text-ui) / 1.45 var(--font-ui);
+  box-shadow: 0 6px 20px var(--edge-shadow);
+}
+
+.toastSuccess {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+  color: var(--ink);
+}
+
+.toastDismiss {
+  margin-left: auto;
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}

@@ -5,24 +5,8 @@ import { StructuralSegmenter } from "./segmentation/structural.ts";
 import { sanitizeBoundaries } from "./segmentation/base.ts";
 import { splitToSize } from "./sizing.ts";
 import type { Segmenter } from "./segmentation/base.ts";
-import type {
-  Block,
-  BoundaryReason,
-  Chunk,
-  DocumentPage,
-  SemanticUnit,
-} from "../models.ts";
+import type { Block, BoundaryReason, Chunk, DocumentPage, SemanticUnit } from "../models.ts";
 import type { TokenCounter } from "../tokenizer.ts";
-
-/**
- * The chunking pipeline.
- *
- *   pages -> blocks -> semantic units -> size-checked units -> parents + children
- *
- * Each arrow is a module that can be replaced on its own. The ordering is the
- * design: meaning decides the boundaries, and size only ever *subdivides* what
- * meaning produced. Nothing here cuts every N tokens.
- */
 
 export interface ChunkingReport {
   blockCount: number;
@@ -31,8 +15,6 @@ export interface ChunkingReport {
   unitCount: number;
   parentCount: number;
   childCount: number;
-  /** Chunks that had to be cut by token count - the meaning-destroying rung.
-   *  A non-zero value here is the signal to improve extraction, not chunking. */
   tokenSplitChunks: number;
 }
 
@@ -45,28 +27,9 @@ export interface ChunkingResult {
 
 export interface ChunkingOptions {
   counter?: TokenCounter;
-  /** Extra segmenters, applied on top of the structural one. An LLM segmenter
-   *  goes here; its boundaries are merged, never trusted exclusively. */
   segmenters?: Segmenter[];
 }
 
-/**
- * Tracks the heading stack so every unit knows its full path.
- *
- * Which signal decides nesting depends on the document:
- *
- *  - **Explicit levels** (markdown `##`, Word styles, or a PDF with a genuine
- *    font-size ladder) are believed outright.
- *  - **Flat levels** - the common PDF case, where every heading is simply bold
- *    at body size - carry no depth at all. Nesting is then read from *run
- *    structure* instead: when two headings appear back to back, the first had no
- *    body of its own, which is what an ancestor looks like. "1. USER & ACCESS
- *    DOMAIN" followed straight by "Customer" means the domain contains the
- *    table.
- *
- * Getting this wrong is not cosmetic: the heading path is prepended to every
- * child before embedding, so a lost ancestor makes the chunk less findable.
- */
 class HeadingStack {
   private stack: { level: number; title: string }[] = [];
   private readonly levelsAreMeaningful: boolean;
@@ -90,8 +53,6 @@ class HeadingStack {
       return;
     }
 
-    // Flat levels: the last heading in the run titles the content that follows;
-    // any before it are ancestors that introduced it.
     const ancestors = blocks.slice(0, -1);
     const leaf = blocks.at(-1)!;
 
@@ -103,8 +64,6 @@ class HeadingStack {
       return;
     }
 
-    // A lone heading is a sibling of the current leaf, so it replaces only that
-    // leaf and leaves the ancestors above it standing.
     this.push(leaf.text, Math.max(this.stack.length, 1));
   }
 
@@ -113,15 +72,6 @@ class HeadingStack {
   }
 }
 
-/**
- * True only when heading depths came from the *format* - markdown `##`, a Word
- * style - and genuinely vary.
- *
- * Levels inferred from PDF font sizes are deliberately not trusted here. A
- * ladder built from two slightly different sizes produces depths that look
- * varied but do not track the document's real hierarchy, and acting on them
- * pops ancestors off the stack. Run structure is the better signal there.
- */
 function levelsAreMeaningful(blocks: Block[]): boolean {
   const headings = blocks.filter((block) => block.kind === "heading");
   if (headings.length === 0) return false;
@@ -158,10 +108,6 @@ function unitFrom(
   };
 }
 
-/**
- * Layer 2 applied: slice blocks at the union of every segmenter's boundaries,
- * carrying the heading stack forward as it goes.
- */
 export function buildUnits(
   blocks: Block[],
   boundaries: number[],
@@ -198,16 +144,6 @@ export function buildUnits(
   return mergeTinyUnits(units, counter);
 }
 
-/**
- * A unit too small to stand alone is folded into its neighbour: a three-word
- * fragment embeds as noise, whereas merged it is context.
- *
- * The exception matters more than the rule. A short unit that sits under its
- * *own* heading is never merged, because the heading is the author stating
- * outright that the topic changed - and merging across it would destroy exactly
- * the boundary this whole pipeline exists to respect. Only headingless
- * fragments get absorbed.
- */
 function mergeTinyUnits(units: SemanticUnit[], counter: TokenCounter): SemanticUnit[] {
   const out: SemanticUnit[] = [];
   for (const unit of units) {
@@ -236,7 +172,6 @@ function mergeTinyUnits(units: SemanticUnit[], counter: TokenCounter): SemanticU
   return out;
 }
 
-/** "Billing > Retry policy" - prepended to a child so it says what it is about. */
 export function formatHeadingPath(path: string[]): string {
   return path.join(" > ");
 }
@@ -273,20 +208,6 @@ export async function chunkDocument(
   };
 }
 
-/**
- * Layer 4 - the hierarchy.
- *
- * A parent is a *group of sibling semantic units* that share a heading
- * ancestor, so retrieving one section returns the whole area of the document it
- * belongs to. Children subdivide each unit for retrieval precision and keep
- * their own, deeper heading path.
- *
- * Grouping is bounded by two rules that stop it becoming a fixed-size merge:
- * a group never exceeds PARENT_MAX_TOKENS, and it never joins sections the
- * document did not already nest under one heading.
- */
-
-/** The deepest heading path every unit in a group shares. */
 function commonPrefix(paths: string[][]): string[] {
   const first = paths[0];
   if (!first) return [];
@@ -299,11 +220,6 @@ function commonPrefix(paths: string[][]): string[] {
   return prefix;
 }
 
-/**
- * Runs of consecutive units that share an ancestor, each run small enough to be
- * one parent. Units with no ancestor of their own always stand alone - there is
- * no evidence they belong with anything.
- */
 function groupByAncestor(units: SemanticUnit[]): SemanticUnit[][] {
   if (!config.GROUP_PARENTS_BY_ANCESTOR) return units.map((unit) => [unit]);
 
@@ -361,9 +277,7 @@ function buildHierarchy(
       chunkIndex: parents.length,
       previousChunkId: parents.at(-1)?.chunkId ?? null,
       nextChunkId: null,
-      blockKinds: [
-        ...new Set(group.flatMap((unit) => unit.blocks.map((block) => block.kind))),
-      ],
+      blockKinds: [...new Set(group.flatMap((unit) => unit.blocks.map((block) => block.kind)))],
       boundaryReason: reason,
     });
     const previous = parents.at(-2);
@@ -371,8 +285,6 @@ function buildHierarchy(
     return parentId;
   };
 
-  /** Children keep the unit's own, deeper heading path - the parent carries the
-   *  breadth, the child carries the precision. */
   const addChildren = (unit: SemanticUnit, parentId: string): void => {
     const heading = formatHeadingPath(unit.headingPath);
     const bodyBlocks = unit.blocks
@@ -418,8 +330,6 @@ function buildHierarchy(
     const text = group.map((unit) => unit.text).join("\n\n");
     const tokenCount = counter.count(text);
 
-    // Grouping already respects the budget, so the only way to be over it is a
-    // single unit that is too large on its own. That one still gets split.
     if (tokenCount > config.PARENT_MAX_TOKENS) {
       const unit = group[0]!;
       const blockTexts = unit.blocks

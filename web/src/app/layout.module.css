@@ -1,0 +1,465 @@
+.shell {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  background: var(--ground);
+  color: var(--ink);
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  flex: 0 0 auto;
+  height: 48px;
+  padding: 0 var(--s3);
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  font: 600 var(--text-ui) / 1 var(--font-ui);
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.mark {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-1);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font: 600 var(--text-label) / 1 var(--font-mono);
+}
+
+.barSpacer {
+  flex: 1 1 auto;
+}
+
+.meta {
+  font: 400 var(--text-sm) / 1 var(--font-mono);
+  color: var(--ink-faint);
+  white-space: nowrap;
+}
+
+.panes {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.rail {
+  flex: 0 0 auto;
+  border-right: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.centre {
+  flex: 1 1 auto;
+  background: var(--ground);
+}
+
+.viewer {
+  flex: 0 0 auto;
+  border-left: 1px solid var(--line);
+  background: var(--sunk);
+}
+
+.paneHead {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  flex: 0 0 auto;
+  height: 36px;
+  padding: 0 var(--s3);
+  border-bottom: 1px solid var(--line-soft);
+  font: 600 var(--text-label) / 1 var(--font-ui);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.paneBody {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.tabs {
+  display: flex;
+  flex: 0 0 auto;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.tab {
+  flex: 1 1 0;
+  min-height: var(--hit);
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--ink-soft);
+  font: 500 var(--text-ui) / 1 var(--font-ui);
+  cursor: pointer;
+}
+
+.tabCurrent {
+  color: var(--ink);
+  border-bottom-color: var(--accent);
+}
+
+.switcher {
+  position: relative;
+}
+
+.switcherButton {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  min-height: var(--hit);
+  max-width: 26ch;
+  padding: 0 var(--s2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-2);
+  background: var(--surface);
+  color: var(--ink);
+  font: 500 var(--text-ui) / 1 var(--font-ui);
+  cursor: pointer;
+}
+
+.switcherButton:hover {
+  background: var(--surface-2);
+}
+
+.switcherName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.menu {
+  position: absolute;
+  top: calc(100% + var(--s1));
+  left: 0;
+  z-index: 30;
+  min-width: 30ch;
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: var(--s1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-2);
+  background: var(--surface);
+  box-shadow: 0 10px 30px var(--edge-shadow);
+}
+
+.menuItem {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+  width: 100%;
+  padding: var(--s2);
+  border: none;
+  border-radius: var(--radius-1);
+  background: transparent;
+  color: var(--ink);
+  font: 400 var(--text-ui) / 1.3 var(--font-ui);
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.menuItem:hover {
+  background: var(--surface-2);
+}
+
+.menuItemCurrent {
+  background: var(--accent-soft);
+}
+
+.menuCount {
+  margin-left: auto;
+  font: 400 var(--text-sm) / 1 var(--font-mono);
+  color: var(--ink-faint);
+  white-space: nowrap;
+}
+
+.menuDivider {
+  height: 1px;
+  margin: var(--s1) 0;
+  background: var(--line-soft);
+}
+
+.sourceRow {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s2);
+  width: 100%;
+  padding: var(--s2) var(--s3);
+  border: none;
+  border-bottom: 1px solid var(--line-soft);
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.sourceRow:hover {
+  background: var(--surface-2);
+}
+
+.sourceRowCurrent {
+  background: var(--accent-soft);
+}
+
+.sourceMain {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.sourceTitle {
+  font: 500 var(--text-ui) / 1.35 var(--font-ui);
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.sourceMeta {
+  margin-top: 2px;
+  font: 400 var(--text-sm) / 1.3 var(--font-mono);
+  color: var(--ink-faint);
+}
+
+.sourceUnavailable {
+  color: var(--warn);
+}
+
+.scopeBar {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: var(--s2) var(--s3);
+  border-bottom: 1px solid var(--line-soft);
+  font: 400 var(--text-sm) / 1 var(--font-ui);
+  color: var(--ink-faint);
+}
+
+.scopeBox {
+  accent-color: var(--accent);
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+}
+
+.placeholder {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  padding: var(--s6);
+}
+
+.palette {
+  width: min(46ch, calc(100vw - var(--s6)));
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-3);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 24px 60px var(--edge-shadow);
+}
+
+.palette::backdrop {
+  background: var(--edge-shadow);
+  backdrop-filter: blur(2px);
+}
+
+.paletteInner {
+  display: flex;
+  flex-direction: column;
+  max-height: 60vh;
+}
+
+.paletteSearch {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  flex: 0 0 auto;
+  padding: var(--s3);
+  border-bottom: 1px solid var(--line-soft);
+  color: var(--ink-faint);
+}
+
+.paletteInput {
+  flex: 1 1 auto;
+  border: none;
+  background: transparent;
+  color: var(--ink);
+  font: 400 var(--text-lg) / 1.3 var(--font-ui);
+  outline: none;
+}
+
+.paletteList {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  margin: 0;
+  padding: var(--s1);
+  list-style: none;
+}
+
+.shortcuts {
+  display: flex;
+  align-items: center;
+  gap: var(--s1);
+  font: 400 var(--text-label) / 1 var(--font-mono);
+  color: var(--ink-faint);
+}
+
+.key {
+  padding: 1px var(--s1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-1);
+  background: var(--surface-2);
+  color: var(--ink-soft);
+}
+
+.railSection {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.railSection + .railSection {
+  border-top: 1px solid var(--line);
+}
+
+.railNotebooks {
+  flex: 0 1 auto;
+  max-height: 42%;
+}
+
+.railSources {
+  flex: 1 1 auto;
+}
+
+.railScroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-bottom: var(--s2);
+}
+
+.railNote {
+  margin: 0;
+  padding: var(--s2) var(--s3) var(--s3);
+  font: 400 var(--text-sm) / 1.5 var(--font-ui);
+  color: var(--ink-faint);
+}
+
+.notebookTitle {
+  margin: 0;
+  font: 600 var(--text-lg) / 1 var(--font-ui);
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 40ch;
+}
+
+.notebookRow {
+  display: flex;
+  align-items: center;
+  padding-right: var(--s2);
+}
+
+.notebookRow:hover {
+  background: var(--surface-2);
+}
+
+.notebookRowCurrent {
+  background: var(--accent-soft);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.notebookMain {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: var(--hit);
+  padding: 0 var(--s3);
+  color: var(--ink);
+  font: 400 var(--text-ui) / 1.3 var(--font-ui);
+  text-decoration: none;
+}
+
+.notebookRowCurrent .notebookMain {
+  font-weight: 500;
+}
+
+.confirm {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--s1);
+}
+
+.notebookName {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notebookCount {
+  flex: 0 0 auto;
+  font: 400 var(--text-label) / 1 var(--font-mono);
+  color: var(--ink-faint);
+  white-space: nowrap;
+}
+
+.newNotebook {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: var(--s1) var(--s3);
+  background: var(--surface-2);
+  color: var(--ink-faint);
+}
+
+.newNotebookInput {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: var(--hit);
+  border: none;
+  background: transparent;
+  color: var(--ink);
+  font: 400 var(--text-ui) / 1 var(--font-ui);
+  outline: none;
+}
+
+.newNotebookInput::placeholder {
+  color: var(--ink-faint);
+}

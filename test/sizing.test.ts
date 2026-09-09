@@ -41,7 +41,9 @@ describe("splitToSize - prefers the least damaging boundary", () => {
   });
 
   it("respects the budget on every piece", () => {
-    const block = Array.from({ length: 40 }, (_, i) => `Sentence ${i} has some words in it.`).join(" ");
+    const block = Array.from({ length: 40 }, (_, i) => `Sentence ${i} has some words in it.`).join(
+      " ",
+    );
     const pieces = splitToSize([block], { maxTokens: 50, counter });
     for (const piece of pieces) {
       assert.ok(piece.tokenCount <= 50, `piece of ${piece.tokenCount} tokens exceeds 50`);
@@ -49,7 +51,9 @@ describe("splitToSize - prefers the least damaging boundary", () => {
   });
 
   it("carries overlap between consecutive pieces", () => {
-    const block = Array.from({ length: 20 }, (_, i) => `Sentence number ${i} appears here.`).join(" ");
+    const block = Array.from({ length: 20 }, (_, i) => `Sentence number ${i} appears here.`).join(
+      " ",
+    );
     const withOverlap = splitToSize([block], { maxTokens: 40, overlapTokens: 10, counter });
     const without = splitToSize([block], { maxTokens: 40, overlapTokens: 0, counter });
     assert.ok(withOverlap.length > 1);

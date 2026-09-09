@@ -13,26 +13,22 @@ import { VectorStore } from "../src/search/vectorStore.ts";
 const TOKEN = "test-token";
 const DIMS = config.EMBEDDING_DIMENSIONS;
 
-/** A deterministic unit-ish vector, so assertions can be exact. */
 function fakeVector(seed: number, scale = 1): number[] {
   return Array.from({ length: DIMS }, (_, i) => scale * Math.sin(seed + i));
 }
 
 interface StubOptions {
-  /** Status codes to return before finally succeeding. */
   failures?: number[];
-  /** Overrides the body entirely. */
   body?: (inputs: string[]) => unknown;
   headers?: Record<string, string>;
 }
 
-/** A fake `fetch`, recording calls. No network, ever. */
 function stubFetch(options: StubOptions = {}) {
   const calls: { inputs: string[] }[] = [];
   const failures = [...(options.failures ?? [])];
 
   const impl = (async (_url: string | URL | Request, init?: RequestInit) => {
-    const parsed = JSON.parse(String(init?.body)) as { inputs: string[] };
+    const parsed = JSON.parse(init?.body as string) as { inputs: string[] };
     calls.push({ inputs: parsed.inputs });
 
     const status = failures.shift();
@@ -43,8 +39,7 @@ function stubFetch(options: StubOptions = {}) {
       });
     }
     const body =
-      options.body?.(parsed.inputs) ??
-      parsed.inputs.map((_, index) => fakeVector(index + 1));
+      options.body?.(parsed.inputs) ?? parsed.inputs.map((_, index) => fakeVector(index + 1));
     return new Response(JSON.stringify(body), {
       status: 200,
       headers: { "Content-Type": "application/json" },
@@ -133,10 +128,7 @@ describe("HfApiEmbedder - response shapes", () => {
 
   it("rejects the wrong number of dimensions", async () => {
     const { impl } = stubFetch({ body: () => [[1, 2, 3]] });
-    await assert.rejects(
-      () => embedder(impl).embedDocuments(["a"]),
-      /expected 384 dimensions/,
-    );
+    await assert.rejects(() => embedder(impl).embedDocuments(["a"]), /expected 384 dimensions/);
   });
 
   it("rejects a vector count that does not match the inputs", async () => {
@@ -240,7 +232,10 @@ describe("HfApiEmbedder - batching", () => {
     const vectors = await embedder(impl).embedDocuments(["real text", "   ", "more text"]);
     assert.equal(vectors.length, 3);
     assert.ok(calls.every((c) => c.inputs.every((t) => t.trim().length > 0)));
-    assert.ok(vectors[1]!.every((x) => x === 0), "blank text gets a zero vector");
+    assert.ok(
+      vectors[1]!.every((x) => x === 0),
+      "blank text gets a zero vector",
+    );
   });
 });
 
@@ -304,7 +299,10 @@ describe("EmbeddingCache", () => {
     calls.length = 0;
     await e.embedDocuments(["known", "unknown"]);
 
-    assert.deepEqual(calls.flatMap((c) => c.inputs), ["unknown"]);
+    assert.deepEqual(
+      calls.flatMap((c) => c.inputs),
+      ["unknown"],
+    );
   });
 });
 
@@ -340,7 +338,10 @@ describe("truncation guard", () => {
       [chunk("safe", 100), chunk("risky", 500), chunk("edge", 380)],
       fake(512),
     );
-    assert.deepEqual(found.map((c) => c.chunkId), ["risky", "edge"]);
+    assert.deepEqual(
+      found.map((c) => c.chunkId),
+      ["risky", "edge"],
+    );
   });
 
   it("finds nothing when every chunk fits", () => {
@@ -353,9 +354,19 @@ describe("truncation guard", () => {
 describe("a notebook is never allowed to mix models", () => {
   const chunk = (chunkId: string) =>
     ({
-      chunkId, documentId: "d", parentId: "p", text: "t", tokenCount: 1,
-      pageStart: 1, pageEnd: 1, headingPath: [], sectionTitle: null, chunkIndex: 0,
-      previousChunkId: null, nextChunkId: null, blockKinds: ["paragraph"],
+      chunkId,
+      documentId: "d",
+      parentId: "p",
+      text: "t",
+      tokenCount: 1,
+      pageStart: 1,
+      pageEnd: 1,
+      headingPath: [],
+      sectionTitle: null,
+      chunkIndex: 0,
+      previousChunkId: null,
+      nextChunkId: null,
+      blockKinds: ["paragraph"],
       boundaryReason: "structural",
     }) as Parameters<VectorStore["add"]>[1][number];
   const unit = () => Array.from({ length: DIMS }, (_, i) => (i === 0 ? 1 : 0));

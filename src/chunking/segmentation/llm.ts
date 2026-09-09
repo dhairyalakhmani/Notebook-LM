@@ -4,22 +4,6 @@ import type { Segmenter } from "./base.ts";
 import type { CompletionModel } from "../../llm/client.ts";
 import type { Block } from "../../models.ts";
 
-/**
- * LLM-assisted segmentation, for documents whose structure is too weak to cut
- * on. Used when a rough PDF gives long runs of undifferentiated paragraphs.
- *
- * Two rules make this safe enough to put in an ingest pipeline:
- *
- *  1. **The model never returns text, only block numbers.** It cannot rewrite,
- *     summarise or invent a single word - the slicing is done here from indices.
- *     Anything malformed is discarded and the run stays whole.
- *  2. **It is advisory.** If the call fails, times out, or returns nonsense, the
- *     caller keeps the structural boundaries. Ingest never breaks because a
- *     provider was down.
- */
-
-/** Re-exported so the chunking API still names the type its options require.
- *  It lives in llm/client.ts because generation needs the same interface. */
 export type { CompletionModel } from "../../llm/client.ts";
 
 const PROMPT = `You are segmenting a document for retrieval. Below are numbered blocks of text in reading order.
@@ -48,9 +32,7 @@ interface BoundaryResponse {
 
 export interface LLMSegmenterOptions {
   model: CompletionModel;
-  /** Blocks per request. Long documents are segmented in windows. */
   windowSize?: number;
-  /** Called when a request fails, so ingest can report degraded segmentation. */
   onFallback?: (error: unknown) => void;
 }
 
@@ -66,8 +48,6 @@ export class LLMSegmenter implements Segmenter {
     this.onFallback = options.onFallback;
   }
 
-  /** Blocks are truncated in the prompt: the model needs to see what a block is
-   *  about, not read all of it, and short prompts keep this cheap. */
   private render(blocks: Block[], offset: number): string {
     return blocks
       .map((block, index) => {
@@ -97,12 +77,8 @@ export class LLMSegmenter implements Segmenter {
       try {
         found.push(...(await this.windowBoundaries(window, start)));
       } catch (error) {
-        // Advisory only: a failed window contributes no boundaries and the
-        // structural ones still stand.
         this.onFallback?.(error);
       }
-      // A window boundary is an artefact of batching, not a topic change, so it
-      // is never added as a cut on its own.
     }
     return sanitizeBoundaries(found, blocks.length);
   }

@@ -3,7 +3,6 @@ import { extname } from "node:path";
 import type { DocumentPage } from "../models.ts";
 
 export abstract class DocumentLoader {
-  /** Lowercase, dot-prefixed: [".pdf"]. */
   abstract readonly extensions: readonly string[];
 
   handles(filePath: string): boolean {

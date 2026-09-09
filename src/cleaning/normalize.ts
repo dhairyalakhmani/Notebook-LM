@@ -1,16 +1,19 @@
 import type { DocumentPage, TextLine } from "../models.ts";
 
+// eslint-disable-next-line no-control-regex
 const CONTROL = /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g;
 const SPACES = /[ \t\u00a0]+/g;
 const ENDS_HYPHENATED = /[A-Za-z]-$/;
 const STARTS_LOWER = /^[a-z]/;
 
-/** Typographic characters that an embedder and a keyword index both do better without. */
 const REPLACEMENTS: Record<string, string> = {
-  "‘": "'", "’": "'", // curly single quotes
-  "“": '"', "”": '"', // curly double quotes
-  "–": "-", "—": "-", // en dash, em dash
-  "•": "-",                // bullet
+  "‘": "'",
+  "’": "'", // curly single quotes
+  "“": '"',
+  "”": '"', // curly double quotes
+  "–": "-",
+  "—": "-", // en dash, em dash
+  "•": "-", // bullet
 };
 const FANCY = /[‘’“”–—•]/g;
 
@@ -23,7 +26,6 @@ export function normalizeLine(text: string): string {
     .trim();
 }
 
-/** "inter-" / "national" on two lines is one word. Put it back together. */
 function mergeHyphenated(lines: TextLine[]): TextLine[] {
   const merged: TextLine[] = [];
   for (const line of lines) {

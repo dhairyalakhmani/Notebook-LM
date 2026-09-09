@@ -1,17 +1,22 @@
+// Must come first: config.ts reads process.env at module scope.
+import "./src/env.ts";
+import { existsSync } from "node:fs";
+import { copyFile, mkdir, readdir, stat } from "node:fs/promises";
+import { extname, join, relative } from "node:path";
 import { Command } from "commander";
 import { ingestFile } from "./src/notebook/ingest.ts";
+import { documentIdForFile } from "./src/models.ts";
 import * as config from "./src/config.ts";
 import { getEmbedder } from "./src/embedding/index.ts";
 import { formatAnswer } from "./src/generation/answer.ts";
 import { askInNotebook } from "./src/notebook/chat.ts";
-import { buildPrompt } from "./src/generation/prompts.ts";
 import { supportedExtensions } from "./src/loaders/index.ts";
 import { NotebookStore } from "./src/notebook/store.ts";
 import { formatPages, Retriever } from "./src/retrieval/index.ts";
 import { VectorStore } from "./src/search/vectorStore.ts";
 
 const program = new Command();
-program.name("notebook").description("a NotebookLM you can read the source of");
+program.name("notebook").description("NoteBook - answers quoted from your own documents");
 
 program
   .command("add")
@@ -19,7 +24,87 @@ program
   .argument("<notebook>", "which notebook to add it to")
   .argument("<path>", `path to a source file (${supportedExtensions().join(", ")})`)
   .action(async (notebook: string, path: string) => {
-    await ingestFile(notebook, path);
+    const outcome = await ingestFile(notebook, path);
+    switch (outcome.kind) {
+      case "added":
+      case "already-added":
+        return;
+      case "needs-ocr":
+      case "no-text":
+        process.exitCode = 1;
+        return;
+    }
+  });
+
+program
+  .command("relink")
+  .description("find the original file for sources added before ingest kept a copy")
+  .argument("<dir>", "directory to search for the original files")
+  .option("--dry-run", "report what would be linked without copying anything")
+  .action(async (dir: string, options: { dryRun?: boolean }) => {
+    const store = new NotebookStore();
+    const missing = store
+      .documentsWithoutSource()
+      .filter((row) => !row.sourcePath || !existsSync(join(config.STORAGE_DIR, row.sourcePath)));
+    if (missing.length === 0) {
+      console.log("every source already has a kept copy - nothing to relink");
+      return;
+    }
+
+    const wanted = new Map<string, string>();
+    for (const row of missing) wanted.set(row.documentId, row.filename);
+    console.log(`${wanted.size} source(s) with no file on disk:`);
+    for (const [id, filename] of wanted) console.log(`  ${id}  ${filename}`);
+
+    // supportedExtensions() already includes the leading dot.
+    const supported = new Set(supportedExtensions());
+    let entries: string[];
+    try {
+      entries = await readdir(dir);
+    } catch {
+      console.log(`cannot read ${dir}`);
+      process.exitCode = 1;
+      return;
+    }
+
+    console.log(`\nhashing ${entries.length} file(s) in ${dir} ...`);
+    let linked = 0;
+    for (const entry of entries) {
+      const candidate = join(dir, entry);
+      if (!supported.has(extname(entry).toLowerCase())) continue;
+      let info;
+      try {
+        info = await stat(candidate);
+      } catch {
+        continue;
+      }
+      if (!info.isFile()) continue;
+
+      // Same hash the ingest used, so a match is exact rather than by name.
+      const id = await documentIdForFile(candidate);
+      if (!wanted.has(id)) continue;
+
+      if (options.dryRun) {
+        console.log(`  would link ${entry} -> ${id}`);
+        linked += 1;
+        continue;
+      }
+
+      const target = join(config.SOURCES_DIR, `${id}${extname(entry).toLowerCase()}`);
+      await mkdir(config.SOURCES_DIR, { recursive: true });
+      await copyFile(candidate, target);
+      const relativePath = relative(config.STORAGE_DIR, target).split("\\").join("/");
+      const rows = store.setSourcePath(id, relativePath, info.size);
+      console.log(`  linked ${entry} -> ${relativePath} (${rows} row(s))`);
+      linked += 1;
+    }
+
+    if (linked === 0) {
+      console.log("\nno file in that directory matched any missing source by content hash.");
+      process.exitCode = 1;
+      return;
+    }
+    console.log(`\n${linked} source(s) ${options.dryRun ? "would be linked" : "linked"}`);
   });
 
 program
@@ -35,7 +120,7 @@ program
     for (const notebook of notebooks) {
       console.log(
         `  ${notebook.notebook.padEnd(24)} ${String(notebook.sources).padStart(3)} source(s)` +
-        `  ${String(notebook.pages).padStart(5)} page(s)   first added ${notebook.addedAt.slice(0, 10)}`,
+          `  ${String(notebook.pages).padStart(5)} page(s)   first added ${notebook.addedAt.slice(0, 10)}`,
       );
     }
   });
@@ -54,7 +139,7 @@ program
     for (const document of documents) {
       console.log(
         `  ${document.documentId}  ${document.filename.padEnd(40)} ` +
-        `${String(document.pageCount).padStart(4)}p  ${document.addedAt}`,
+          `${String(document.pageCount).padStart(4)}p  ${document.addedAt}`,
       );
     }
   });
@@ -65,22 +150,15 @@ program
   .argument("<notebook>")
   .argument("<documentId>", "the id shown by `sources`")
   .action((notebook: string, documentId: string) => {
-    // text first: if the vector delete fails, a re-`add` still works, because the
-    // document row that guards it is already gone
-    const { removed, chunksRemoved } = new NotebookStore().deleteDocument(
-      notebook,
-      documentId,
-    );
+    const { removed, chunksRemoved } = new NotebookStore().deleteDocument(notebook, documentId);
     if (!removed) {
       console.log(`notebook '${notebook}' has no source with id ${documentId}`);
       return;
     }
-    // Scoped to this notebook: another notebook may hold the same file, and its
-    // vectors must survive.
     new VectorStore().deleteDocument(documentId, notebook);
     console.log(
       `removed ${documentId} from ${notebook}` +
-      (chunksRemoved ? "" : " (its text is kept - another notebook still uses it)"),
+        (chunksRemoved ? "" : " (its text is kept - another notebook still uses it)"),
     );
   });
 
@@ -107,8 +185,6 @@ program
         stateless: options.history === false,
       });
 
-      // Say so when retrieval searched for something other than what was typed.
-      // A silently rewritten question is the hardest kind of answer to trust.
       if (result.rewritten) {
         console.log(`(follow-up resolved to: "${result.searchedFor}")
 `);
@@ -122,7 +198,7 @@ program
       console.log(
         `
 ${(performance.now() - started).toFixed(0)}ms` +
-        (options.history === false ? "  (not saved)" : `  |  turn ${result.historyLength + 1}`),
+          (options.history === false ? "  (not saved)" : `  |  turn ${result.historyLength + 1}`),
       );
     },
   );
@@ -147,14 +223,12 @@ You  ${message.createdAt.slice(0, 19).replace("T", " ")}`);
         }
       } else {
         console.log("\nNotebook");
-        // Indent every line of the answer, so a multi-paragraph reply still
-        // reads as one speaker's turn in the transcript.
         console.log(`  ${message.text.replace(/\n/g, "\n  ")}`);
         for (const citation of message.citations) {
           console.log(
             `    [${citation.marker}] ${citation.filename}, ` +
-            `${formatPages(citation.pageStart, citation.pageEnd)}` +
-            (citation.headingPath.length > 0 ? `, "${citation.headingPath.join(" > ")}"` : ""),
+              `${formatPages(citation.pageStart, citation.pageEnd)}` +
+              (citation.headingPath.length > 0 ? `, "${citation.headingPath.join(" > ")}"` : ""),
           );
         }
       }
@@ -200,8 +274,8 @@ program
         sources === 0
           ? `\nnotebook '${notebook}' has no sources - add one with \`notebook add\``
           : "\nnothing matched. Both searches came back empty, which for a non-empty " +
-          "notebook usually means the question shares no words with it and is far " +
-          "from it in meaning too.",
+              "notebook usually means the question shares no words with it and is far " +
+              "from it in meaning too.",
       );
       return;
     }
@@ -210,10 +284,8 @@ program
       const heading = passage.headingPath.join(" > ") || passage.sectionTitle || "(no heading)";
       console.log(
         `\n[${index + 1}] ${passage.filename}  ${formatPages(passage.pageStart, passage.pageEnd)}` +
-        `  |  ${heading}`,
+          `  |  ${heading}`,
       );
-      // Where it came from matters as much as the score. "found by keyword only"
-      // is the difference between retrieval working and retrieval getting lucky.
       const found = [
         passage.match.denseRank !== null
           ? `meaning #${passage.match.denseRank} (cos ${passage.match.dense?.toFixed(3)})`
@@ -224,11 +296,12 @@ program
       ].filter((part) => part !== null);
       console.log(
         `    fused ${passage.match.fused.toFixed(5)}  |  found by ${found.join(" + ")}` +
-        `  |  ${passage.matchCount} matching chunk(s)  |  ${passage.blockKinds.join(", ")}`,
+          `  |  ${passage.matchCount} matching chunk(s)  |  ${passage.blockKinds.join(", ")}`,
       );
       console.log(
-        options.full ? passage.text : passage.text.slice(0, 500).trimEnd() +
-          (passage.text.length > 500 ? " ..." : ""),
+        options.full
+          ? passage.text
+          : passage.text.slice(0, 500).trimEnd() + (passage.text.length > 500 ? " ..." : ""),
       );
     }
     console.log(`\n${passages.length} passage(s) in ${elapsed.toFixed(0)}ms`);
@@ -254,14 +327,12 @@ program
     const vectors = await embedder.embedDocuments(passages);
     console.log(
       `\nembedDocuments: ${passages.length} passages in ` +
-      `${(performance.now() - t1).toFixed(0)}ms`,
+        `${(performance.now() - t1).toFixed(0)}ms`,
     );
     console.log(`  dimensions:   ${vectors[0]?.length} (expected ${embedder.dimensions})`);
     const norms = vectors.map((v) => Math.sqrt(v.reduce((s, x) => s + x * x, 0)));
     console.log(`  vector norms: ${norms.map((n) => n.toFixed(6)).join(", ")}`);
-    console.log(
-      `  all unit length: ${norms.every((n) => Math.abs(n - 1) < 1e-3) ? "yes" : "NO"}`,
-    );
+    console.log(`  all unit length: ${norms.every((n) => Math.abs(n - 1) < 1e-3) ? "yes" : "NO"}`);
 
     const t2 = performance.now();
     const query = await embedder.embedQuery("how are failed payments retried?");
@@ -287,8 +358,5 @@ try {
   await program.parseAsync();
 } catch (error) {
   console.error(`error: ${error instanceof Error ? error.message : String(error)}`);
-  // Set the code rather than calling process.exit(): a forced exit while an
-  // HTTP keep-alive socket is still closing trips an assertion inside libuv on
-  // Windows. Letting the loop drain exits just as promptly, and cleanly.
   process.exitCode = 1;
 }

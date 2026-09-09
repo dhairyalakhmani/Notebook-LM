@@ -10,16 +10,14 @@ import type {
   Chunk,
   Citation,
   Document,
+  IngestStats,
+  OutlineSection,
+  StoredPassage,
 } from "../models.ts";
 
 const DB_FILENAME = "notebook.db";
 const BATCH = 500; // SQLite caps how many "?" placeholders one statement may have
 
-/**
- * Bumped whenever the chunk shape changes. Chunks are derived data - they can
- * always be rebuilt from the source file - so a stale schema is dropped and
- * rebuilt rather than migrated. Documents are re-ingested, not lost.
- */
 const SCHEMA_VERSION = 3;
 
 const SCHEMA = `
@@ -31,6 +29,15 @@ CREATE TABLE IF NOT EXISTS documents (
     source_type TEXT NOT NULL,
     page_count  INTEGER NOT NULL,
     added_at    TEXT NOT NULL,
+    -- Where the ingested original lives, relative to STORAGE_DIR, so the
+    -- directory can move without rewriting rows. NULL for documents added
+    -- before the file was kept (see \`notebook relink\`).
+    source_path TEXT,
+    byte_size   INTEGER,
+    -- The ChunkingReport and stage timings, as JSON. Display metadata only:
+    -- never filtered or aggregated, and the stage list has to be able to grow
+    -- without a migration. Same convention as heading_path and citations.
+    ingest_stats TEXT,
     -- Composite, not document_id alone. The id is a hash of the file's bytes, so
     -- the same PDF added to two notebooks has one id - and with document_id as
     -- the sole primary key, INSERT OR REPLACE silently MOVED the document out of
@@ -60,7 +67,20 @@ CREATE TABLE IF NOT EXISTS messages (
     text              TEXT NOT NULL,
     created_at        TEXT NOT NULL,
     citations         TEXT NOT NULL DEFAULT '[]',
-    resolved_question TEXT
+    resolved_question TEXT,
+    -- The retrieval scores behind an assistant turn, as JSON. Without this the
+    -- scores panel is empty for every turn read back from history, which is
+    -- most of them.
+    passages          TEXT NOT NULL DEFAULT '[]'
+);
+-- A notebook has always existed only because a document row names it, so an
+-- empty notebook was unrepresentable - and you cannot upload INTO a notebook
+-- that does not exist yet. This table gives one an identity of its own; a row
+-- here is not required for a notebook to appear, so nothing about the old
+-- behaviour changes.
+CREATE TABLE IF NOT EXISTS notebooks (
+    name       TEXT PRIMARY KEY,
+    created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_chunks_document ON chunks(document_id);
 CREATE INDEX IF NOT EXISTS idx_chunks_parent   ON chunks(parent_id);
@@ -84,6 +104,7 @@ interface MessageRow extends Record<string, SQLOutputValue> {
   created_at: string;
   citations: string;
   resolved_question: string | null;
+  passages: string | null;
 }
 
 interface ChunkRow extends Record<string, SQLOutputValue> {
@@ -103,14 +124,31 @@ interface ChunkRow extends Record<string, SQLOutputValue> {
   boundary_reason: string;
 }
 
-/** Metadata stored as JSON is still metadata: parse defensively so one bad row
- *  cannot take down a whole notebook's retrieval. */
+function leadingNumber(title: string): string | null {
+  return /^(\d+(?:\.\d+)*)[.)]?\s+\S/.exec(title)?.[1] ?? null;
+}
+
+function stripLeadingNumber(title: string): string {
+  const number = leadingNumber(title);
+  return number ? title.slice(number.length).replace(/^[.)]?\s+/, "") : title;
+}
+
 function parseList<T>(json: string): T[] {
   try {
     const parsed: unknown = JSON.parse(json);
     return Array.isArray(parsed) ? (parsed as T[]) : [];
   } catch {
     return [];
+  }
+}
+
+function parseObject<T>(json: string | null): T | null {
+  if (!json) return null;
+  try {
+    const parsed: unknown = JSON.parse(json);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as T) : null;
+  } catch {
+    return null;
   }
 }
 
@@ -152,32 +190,59 @@ function toMessage(row: MessageRow): ChatMessage {
     text: row.text,
     createdAt: row.created_at,
     citations: parseList<Citation>(row.citations),
+    passages: parseList<StoredPassage>(row.passages ?? "[]"),
     resolvedQuestion: row.resolved_question,
   };
 }
 
-/** The text side of storage: which sources a notebook holds, and their chunks. */
 export class NotebookStore {
   private db: DatabaseSync;
 
   constructor(storageDir: string = config.STORAGE_DIR) {
     mkdirSync(storageDir, { recursive: true });
     this.db = new DatabaseSync(join(storageDir, DB_FILENAME));
+
+    this.db.exec("PRAGMA journal_mode = WAL");
+    this.db.exec("PRAGMA busy_timeout = 5000");
+
     this.migrate();
     this.db.exec(SCHEMA);
+    this.ensureColumns();
   }
 
-  /** Drops derived tables when the chunk shape has changed. Sources have to be
-   *  re-added; nothing that cannot be rebuilt from the original file is lost. */
+  private ensureColumns(): void {
+    const wanted: Record<string, Record<string, string>> = {
+      documents: {
+        source_path: "TEXT",
+        byte_size: "INTEGER",
+        ingest_stats: "TEXT",
+      },
+      messages: {
+        passages: "TEXT NOT NULL DEFAULT '[]'",
+      },
+    };
+
+    for (const [table, columns] of Object.entries(wanted)) {
+      const present = new Set(
+        (this.db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).map(
+          (column) => column.name,
+        ),
+      );
+      if (present.size === 0) continue;
+
+      for (const [column, definition] of Object.entries(columns)) {
+        if (present.has(column)) continue;
+        this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+      }
+    }
+  }
+
   private migrate(): void {
     const row = this.db.prepare("PRAGMA user_version").get() as { user_version: number };
 
-    // The version number says what the file *claims* to be; the columns say what
-    // it actually is. Check both, so a mis-stamped version cannot leave the
-    // process talking to a table that does not have the columns it will write.
-    const columns = (
-      this.db.prepare("PRAGMA table_info(chunks)").all() as { name: string }[]
-    ).map((column) => column.name);
+    const columns = (this.db.prepare("PRAGMA table_info(chunks)").all() as { name: string }[]).map(
+      (column) => column.name,
+    );
     const existing = columns.length > 0;
     const documentColumns = (
       this.db.prepare("PRAGMA index_list(documents)").all() as { origin: string }[]
@@ -204,12 +269,21 @@ export class NotebookStore {
     return row !== undefined;
   }
 
-  addDocument(notebook: string, document: Document): void {
+  addDocument(
+    notebook: string,
+    document: Document,
+    meta: {
+      sourcePath?: string | null;
+      byteSize?: number | null;
+      stats?: IngestStats | null;
+    } = {},
+  ): void {
     this.db
       .prepare(
         `INSERT OR REPLACE INTO documents
-           (document_id, notebook, title, filename, source_type, page_count, added_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+           (document_id, notebook, title, filename, source_type, page_count, added_at,
+            source_path, byte_size, ingest_stats)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         document.documentId,
@@ -219,20 +293,62 @@ export class NotebookStore {
         document.sourceType,
         document.pageCount,
         document.addedAt,
+        meta.sourcePath ?? null,
+        meta.byteSize ?? null,
+        meta.stats ? JSON.stringify(meta.stats) : null,
       );
   }
 
+  setIngestStats(notebook: string, documentId: string, stats: IngestStats): void {
+    this.db
+      .prepare("UPDATE documents SET ingest_stats = ? WHERE notebook = ? AND document_id = ?")
+      .run(JSON.stringify(stats), notebook, documentId);
+  }
+
+  documentsWithoutSource(): {
+    notebook: string;
+    documentId: string;
+    filename: string;
+    sourcePath: string | null;
+  }[] {
+    return this.db
+      .prepare(
+        `SELECT notebook, document_id AS documentId, filename,
+                source_path AS sourcePath
+           FROM documents ORDER BY notebook, filename`,
+      )
+      .all() as {
+      notebook: string;
+      documentId: string;
+      filename: string;
+      sourcePath: string | null;
+    }[];
+  }
+
+  documentPath(documentId: string): string | null {
+    const row = this.db
+      .prepare(
+        `SELECT source_path FROM documents
+          WHERE document_id = ? AND source_path IS NOT NULL LIMIT 1`,
+      )
+      .get(documentId) as { source_path: string } | undefined;
+    return row?.source_path ?? null;
+  }
+
+  setSourcePath(documentId: string, sourcePath: string, byteSize: number | null): number {
+    const result = this.db
+      .prepare("UPDATE documents SET source_path = ?, byte_size = ? WHERE document_id = ?")
+      .run(sourcePath, byteSize, documentId);
+    return Number(result.changes);
+  }
+
   getDocument(documentId: string): Document | null {
-    // Any notebook's row will do: the columns that differ between them are the
-    // notebook itself, and everything a citation needs is identical.
     const row = this.db
       .prepare("SELECT * FROM documents WHERE document_id = ? LIMIT 1")
       .get(documentId) as DocumentRow | undefined;
     return row ? toDocument(row) : null;
   }
 
-  /** How many notebooks hold this document. Chunks are shared between them, so
-   *  this is what decides whether a removal may delete them. */
   notebooksWith(documentId: string): number {
     const row = this.db
       .prepare("SELECT COUNT(*) AS n FROM documents WHERE document_id = ?")
@@ -240,31 +356,112 @@ export class NotebookStore {
     return row.n;
   }
 
-  /**
-   * Every notebook that has at least one source, with a little about it.
-   *
-   * There is no `notebooks` table: a notebook exists precisely because a
-   * document row names it. That keeps the schema small, and has one consequence
-   * worth knowing - removing a notebook's last source makes the notebook itself
-   * disappear, because nothing else records that it existed.
-   */
-  listNotebooks(): { notebook: string; sources: number; pages: number; addedAt: string }[] {
+  listNotebooks(): {
+    notebook: string;
+    sources: number;
+    pages: number;
+    addedAt: string;
+    createdAt: string | null;
+    lastMessageAt: string | null;
+  }[] {
     const rows = this.db
       .prepare(
-        `SELECT notebook,
-                COUNT(*)          AS sources,
-                SUM(page_count)   AS pages,
-                MIN(added_at)     AS added_at
-           FROM documents
-          GROUP BY notebook
-          ORDER BY MIN(added_at)`,
+        `WITH names AS (
+             SELECT notebook AS name FROM documents
+             UNION SELECT name FROM notebooks
+             UNION SELECT notebook FROM messages
+           )
+           SELECT names.name AS notebook,
+                  (SELECT COUNT(*) FROM documents d WHERE d.notebook = names.name)
+                    AS sources,
+                  (SELECT COALESCE(SUM(page_count), 0) FROM documents d
+                    WHERE d.notebook = names.name) AS pages,
+                  (SELECT MIN(added_at) FROM documents d WHERE d.notebook = names.name)
+                    AS added_at,
+                  (SELECT created_at FROM notebooks n WHERE n.name = names.name)
+                    AS created_at,
+                  (SELECT MAX(created_at) FROM messages m WHERE m.notebook = names.name)
+                    AS last_message_at
+             FROM names
+            ORDER BY COALESCE(
+                       (SELECT MIN(added_at) FROM documents d WHERE d.notebook = names.name),
+                       (SELECT created_at FROM notebooks n WHERE n.name = names.name),
+                       ''
+                     )`,
       )
-      .all() as { notebook: string; sources: number; pages: number; added_at: string }[];
+      .all() as {
+      notebook: string;
+      sources: number;
+      pages: number;
+      added_at: string | null;
+      created_at: string | null;
+      last_message_at: string | null;
+    }[];
     return rows.map((row) => ({
       notebook: row.notebook,
       sources: row.sources,
       pages: row.pages,
-      addedAt: row.added_at,
+      addedAt: row.added_at ?? row.created_at ?? "",
+      createdAt: row.created_at,
+      lastMessageAt: row.last_message_at,
+    }));
+  }
+
+  createNotebook(name: string, createdAt: string = new Date().toISOString()): boolean {
+    const existing = this.db.prepare("SELECT 1 FROM notebooks WHERE name = ?").get(name);
+    if (existing !== undefined) return false;
+    // A notebook that already holds documents exists without a row here.
+    const held = this.db.prepare("SELECT 1 FROM documents WHERE notebook = ? LIMIT 1").get(name);
+    this.db
+      .prepare("INSERT OR IGNORE INTO notebooks (name, created_at) VALUES (?, ?)")
+      .run(name, createdAt);
+    return held === undefined;
+  }
+
+  deleteNotebook(name: string): { documentIds: string[]; messagesRemoved: number } {
+    const documentIds = (
+      this.db
+        .prepare("SELECT document_id AS documentId FROM documents WHERE notebook = ?")
+        .all(name) as { documentId: string }[]
+    ).map((row) => row.documentId);
+
+    this.db.prepare("DELETE FROM documents WHERE notebook = ?").run(name);
+    const messages = this.db.prepare("DELETE FROM messages WHERE notebook = ?").run(name);
+    this.db.prepare("DELETE FROM notebooks WHERE name = ?").run(name);
+
+    return { documentIds, messagesRemoved: Number(messages.changes) };
+  }
+
+  notebookExists(name: string): boolean {
+    const row = this.db
+      .prepare(
+        `SELECT 1 FROM notebooks WHERE name = ?
+          UNION SELECT 1 FROM documents WHERE notebook = ?
+          UNION SELECT 1 FROM messages WHERE notebook = ? LIMIT 1`,
+      )
+      .get(name, name, name);
+    return row !== undefined;
+  }
+
+  sourcesIn(notebook: string): {
+    document: Document;
+    sourcePath: string | null;
+    byteSize: number | null;
+    stats: IngestStats | null;
+  }[] {
+    const rows = this.db
+      .prepare("SELECT * FROM documents WHERE notebook = ? ORDER BY added_at")
+      .all(notebook) as (DocumentRow & {
+      source_path: string | null;
+      byte_size: number | null;
+      ingest_stats: string | null;
+    })[];
+
+    return rows.map((row) => ({
+      document: toDocument(row),
+      sourcePath: row.source_path,
+      byteSize: row.byte_size,
+      stats: parseObject<IngestStats>(row.ingest_stats),
     }));
   }
 
@@ -275,15 +472,6 @@ export class NotebookStore {
     return rows.map(toDocument);
   }
 
-  /**
-   * Removes a source from ONE notebook.
-   *
-   * Chunks are keyed by document id and shared between notebooks holding the
-   * same file, so they are deleted only when this was the last notebook
-   * referencing it. Returns what happened, because the caller has to make the
-   * matching decision about vectors: `chunksRemoved` false means another
-   * notebook is still using them.
-   */
   deleteDocument(
     notebook: string,
     documentId: string,
@@ -305,6 +493,35 @@ export class NotebookStore {
       throw error;
     }
     return { removed: true, chunksRemoved: last };
+  }
+
+  outline(documentId: string): OutlineSection[] {
+    const rows = this.db
+      .prepare(
+        `SELECT heading_path AS headingPath,
+                MIN(page_start) AS page,
+                MIN(chunk_index) AS position
+           FROM chunks
+          WHERE document_id = ? AND parent_id IS NULL
+          GROUP BY heading_path
+          ORDER BY MIN(chunk_index)`,
+      )
+      .all(documentId) as { headingPath: string; page: number | null; position: number }[];
+
+    const sections: OutlineSection[] = [];
+    for (const row of rows) {
+      const path = parseList<string>(row.headingPath);
+      const title = path.at(-1);
+      // A chunk before the first heading has an empty path and no title to show.
+      if (!title) continue;
+      sections.push({
+        number: leadingNumber(title),
+        title: stripLeadingNumber(title),
+        page: row.page,
+        depth: path.length,
+      });
+    }
+    return sections;
   }
 
   addChunks(chunks: Chunk[]): void {
@@ -345,19 +562,12 @@ export class NotebookStore {
 
   // ------------------------------------------------------------ conversation
 
-  /**
-   * Appends one turn and returns it with the id the database assigned.
-   *
-   * Note what `migrate` does NOT do: it never drops this table. Chunks and
-   * vectors are rebuilt by re-ingesting, so throwing them away on a schema
-   * change costs nothing but time. A conversation cannot be regenerated from
-   * anything, which makes it the only genuinely irreplaceable data here.
-   */
   addMessage(message: Omit<ChatMessage, "messageId">): ChatMessage {
     const result = this.db
       .prepare(
-        `INSERT INTO messages (notebook, role, text, created_at, citations, resolved_question)
-         VALUES (?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO messages
+           (notebook, role, text, created_at, citations, resolved_question, passages)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         message.notebook,
@@ -366,11 +576,11 @@ export class NotebookStore {
         message.createdAt,
         JSON.stringify(message.citations),
         message.resolvedQuestion,
+        JSON.stringify(message.passages ?? []),
       );
     return { ...message, messageId: Number(result.lastInsertRowid) };
   }
 
-  /** The whole thread, oldest first. */
   messages(notebook: string): ChatMessage[] {
     const rows = this.db
       .prepare("SELECT * FROM messages WHERE notebook = ? ORDER BY message_id")
@@ -378,23 +588,13 @@ export class NotebookStore {
     return rows.map(toMessage);
   }
 
-  /**
-   * The last `limit` turns, still oldest first.
-   *
-   * Bounded because this feeds a prompt: an hour-old conversation would other-
-   * wise grow the rewrite call without end, and only the recent turns can
-   * plausibly be what "that" refers to.
-   */
   recentMessages(notebook: string, limit: number): ChatMessage[] {
     const rows = this.db
-      .prepare(
-        "SELECT * FROM messages WHERE notebook = ? ORDER BY message_id DESC LIMIT ?",
-      )
+      .prepare("SELECT * FROM messages WHERE notebook = ? ORDER BY message_id DESC LIMIT ?")
       .all(notebook, limit) as MessageRow[];
     return rows.reverse().map(toMessage);
   }
 
-  /** Forgets a notebook's conversation. Its sources are untouched. */
   clearMessages(notebook: string): number {
     const result = this.db.prepare("DELETE FROM messages WHERE notebook = ?").run(notebook);
     return Number(result.changes);
@@ -413,7 +613,6 @@ export class NotebookStore {
     return found;
   }
 
-  /** Every child chunk in a notebook — what the keyword index is built from. */
   childChunks(notebook: string): Chunk[] {
     const rows = this.db
       .prepare(
